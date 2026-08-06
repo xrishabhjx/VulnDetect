@@ -398,4 +398,4 @@ npx vuln-scanner scan https://github.com/juice-shop/juice-shop
 ---
 
 > [!NOTE]
-> **About the synopsis tech stack (Spring Boot + React):** If your professor or guide strictly requires Spring Boot, you can still follow this plan but implement the backend in Java. The architecture and API integrations remain identical. However, the VS Code extension conversion will require a separate Node.js wrapper around your Java engine. I'd recommend discussing the stack choice with your guide — the TypeScript approach is objectively better for the final product goal.
+> **About the tech stack choice:** The TypeScript/Node.js approach was chosen over Spring Boot + React because the final product goal includes a VS Code extension, which requires JavaScript/TypeScript. The architecture and API integrations remain identical regardless of the implementation language.

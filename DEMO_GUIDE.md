@@ -1,4 +1,4 @@
-# 🎯 VulnShield — Phase 1 Mentor Demo Guide
+# 🎯 VulnShield — Demo Guide
 
 ## Before the Demo (Do This Ahead of Time)
 
@@ -10,10 +10,10 @@ docker compose up -d
 docker ps   # should show vulnshield-db
 
 # 3. Open the project in VS Code
-code "d:\projs\major proj"
+code .
 ```
 
-Open these files as tabs in VS Code before the mentor arrives:
+Open these files as tabs in VS Code before the demo:
 1. `README.md` — overview
 2. `packages/core/src/types.ts` — data model
 3. `packages/core/src/parsers/npm-parser.ts` — parsing logic
@@ -124,7 +124,7 @@ Severity Breakdown:
 
 ---
 
-### 🔵 Step 5 — Validate Correctness (3 min) ← Key for mentor questions
+### 🔵 Step 5 — Validate Correctness (3 min)
 
 This is how you prove the results are accurate.
 
@@ -146,11 +146,11 @@ Open browser → `https://nvd.nist.gov/vuln/search/results?query=ejs`
 
 ```bash
 # Clone nodejs-goof and run npm's built-in auditor
-cd C:\Users\asus\AppData\Local\Temp
+cd %TEMP%
 git clone https://github.com/snyk-labs/nodejs-goof goof-test
 cd goof-test
 npm audit --json | python -c "import sys,json; d=json.load(sys.stdin); print('npm audit found:', d.get('metadata',{}).get('vulnerabilities',{}))"
-cd "d:\projs\major proj"
+cd .
 ```
 
 **Say:**
@@ -194,14 +194,14 @@ Or open `http://localhost:3001/api/health` in a browser.
 
 ### 🔵 Step 7 — Show the GitHub Repo (1 min)
 
-Open browser → `https://github.com/Nithya-shree182/major-project`
+Open browser → `https://github.com/xrishabhjx/VulnDetect`
 
 **Say:**
 > "Everything is version-controlled on GitHub on the `initial-build` branch. The README has full reproduction steps — anyone can clone this and run it from scratch."
 
 ---
 
-## Likely Mentor Questions & Answers
+## Likely Questions & Answers
 
 **Q: Why Node.js instead of Spring Boot as in the synopsis?**
 > "The final goal is a VS Code extension. VS Code extensions are built in TypeScript/JavaScript — if we used Java, we'd need a separate language bridge. The architecture is identical to the synopsis — same four layers, same data flow, just implemented in TypeScript. The database is still PostgreSQL as specified."
@@ -240,5 +240,5 @@ Open browser → `https://github.com/Nithya-shree182/major-project`
 
 - OSV advisory: `https://osv.dev/vulnerability/GHSA-3w5v-p54c-f74x`
 - NVD search: `https://nvd.nist.gov/vuln/search/results?query=ejs`
-- Your GitHub repo: `https://github.com/Nithya-shree182/major-project`
+- Your GitHub repo: `https://github.com/xrishabhjx/VulnDetect`
 - Prisma Studio: `http://localhost:5555` (after running db:studio)

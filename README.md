@@ -205,8 +205,8 @@ Each remediation candidate is scored by the `CandidateRanker` using a weighted m
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Nithya-shree182/AI-Powered-Vulnerability-Detection-And-Mitigation-System-.git
-cd AI-Powered-Vulnerability-Detection-And-Mitigation-System-
+git clone https://github.com/xrishabhjx/VulnDetect.git
+cd VulnDetect
 
 # 2. Install all dependencies (monorepo)
 pnpm install
@@ -404,9 +404,8 @@ The system is evaluated across three axes:
 
 ## Author
 
-**Nithya Shree R , Dev Kukreja , Kavindra Nishod**  
-Department of Computer Science & Engineering (Cyber Security)  
-RNS Institute of Technology, Bengaluru  
+**Rishabh Jain**  
+
 ---
 
 ## License

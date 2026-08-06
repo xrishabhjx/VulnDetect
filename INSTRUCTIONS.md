@@ -1,4 +1,4 @@
-﻿# AI-Powered Repository Security Intelligence Platform
+# AI-Powered Repository Security Intelligence Platform
 ## Setup & Usage Guide
 
 ---
@@ -38,7 +38,7 @@ npm install -g pnpm
 ## 2. Initial Setup
 
 ```bash
-cd "d:/projs/major proj"
+cd VulnDetect
 pnpm install
 pnpm build
 ```
