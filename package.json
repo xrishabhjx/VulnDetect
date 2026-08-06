@@ -1,0 +1,17 @@
+{
+  "name": "vuln-shield",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-Powered Vulnerability Detection and Mitigation System",
+  "scripts": {
+    "dev:api": "pnpm --filter @vuln-shield/api dev",
+    "dev:web": "pnpm --filter @vuln-shield/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "scan": "pnpm --filter @vuln-shield/core scan"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

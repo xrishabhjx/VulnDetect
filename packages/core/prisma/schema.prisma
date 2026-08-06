@@ -1,0 +1,262 @@
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+// ─── Phase 1 Models (unchanged) ─────────────────────────────────────────────
+
+model Scan {
+  id           String       @id @default(cuid())
+  repoUrl      String
+  repoOwner    String
+  repoName     String
+  status       String       @default("pending") // pending | scanning | complete | failed
+  totalDeps    Int          @default(0)
+  totalVulns   Int          @default(0)
+  errorMessage String?      @db.Text
+  createdAt    DateTime     @default(now())
+  completedAt  DateTime?
+  dependencies Dependency[]
+
+  // Phase 2 relations
+  metadata         RepositoryMetadata?
+  chunks           RepositoryChunk[]
+  similarRepos     SimilarRepository[]
+  threatIntel      ThreatIntelRecord[]
+  remediations     RemediationReport[]
+  rsisScore        RSISScore?
+  evaluations      EvaluationResult[]
+}
+
+model Dependency {
+  id              String          @id @default(cuid())
+  scanId          String
+  scan            Scan            @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  ecosystem       String          // npm | maven | pypi
+  name            String
+  version         String
+  manifestPath    String
+  isDev           Boolean         @default(false)
+  vulnerabilities Vulnerability[]
+
+  @@index([scanId])
+  @@index([ecosystem, name, version])
+}
+
+model Vulnerability {
+  id                 String     @id @default(cuid())
+  dependencyId       String
+  dependency         Dependency @relation(fields: [dependencyId], references: [id], onDelete: Cascade)
+  cveId              String?
+  severity           String     // CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN
+  cvssScore          Float?
+  cvssVector         String?
+  summary            String     @db.Text
+  details            String?    @db.Text
+  publishedDate      String?
+  modifiedDate       String?
+  fixedVersions      String?    @db.Text  // JSON array stored as string
+  references         String?    @db.Text  // JSON array stored as string
+  source             String     // OSV | NVD | GITHUB | CISA
+  affectedRange      String?
+  // Phase 2 extensions
+  kev                Boolean    @default(false)  // Is in CISA Known Exploited Vulnerabilities
+  githubAdvisoryId   String?
+  mitigationGuidance String?    @db.Text
+
+  @@index([dependencyId])
+  @@index([cveId])
+  @@index([severity])
+}
+
+// ─── Phase 2 Models ──────────────────────────────────────────────────────────
+
+/// Structured understanding of the scanned repository
+model RepositoryMetadata {
+  id              String   @id @default(cuid())
+  scanId          String   @unique
+  scan            Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  // Core identity
+  language        String?  // Primary language detected by GitHub
+  languages       String?  @db.Text  // JSON: { "TypeScript": 12345, ... }
+  framework       String?  // Detected framework (express, spring-boot, django…)
+  purpose         String?  @db.Text  // LLM-extracted one-paragraph purpose
+  topics          String?  @db.Text  // JSON array of GitHub topics
+  description     String?  @db.Text  // GitHub repo description
+
+  // Structure
+  folderHierarchy String?  @db.Text  // JSON: top-level directory tree
+  totalFiles      Int      @default(0)
+  hasDockerfile   Boolean  @default(false)
+  hasCiCd         Boolean  @default(false)
+  hasTests        Boolean  @default(false)
+
+  // GitHub stats
+  stars           Int      @default(0)
+  forks           Int      @default(0)
+  openIssues      Int      @default(0)
+  lastPushed      DateTime?
+
+  createdAt       DateTime @default(now())
+}
+
+/// A single semantic chunk of a repository (code / doc / config)
+model RepositoryChunk {
+  id          String   @id @default(cuid())
+  scanId      String
+  scan        Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  filePath    String
+  chunkType   String   // function | class | module | documentation | config
+  language    String?
+  content     String   @db.Text
+  startLine   Int?
+  endLine     Int?
+
+  // pgvector native column — enables sub-millisecond cosine similarity queries
+  // Dimension must match embedding model: Gemini text-embedding-004 = 768
+  embeddingVec  Unsupported("vector(768)")?
+
+  // JSON fallback kept for compatibility with local TF-IDF embedder
+  embeddingJson String? @db.Text
+
+  createdAt   DateTime @default(now())
+
+  @@index([scanId])
+  @@index([chunkType])
+}
+
+/// Similar public GitHub repositories discovered via semantic search
+model SimilarRepository {
+  id           String   @id @default(cuid())
+  scanId       String
+  scan         Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  owner        String
+  repo         String
+  fullName     String   // owner/repo
+  description  String?  @db.Text
+  language     String?
+  stars        Int      @default(0)
+  topics       String?  @db.Text  // JSON array
+  similarityScore Float @default(0)  // cosine similarity with target repo
+  githubUrl    String
+
+  createdAt    DateTime @default(now())
+
+  @@index([scanId])
+}
+
+/// Normalized threat intelligence record from any source
+model ThreatIntelRecord {
+  id                 String   @id @default(cuid())
+  scanId             String
+  scan               Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  cveId              String?
+  osvId              String?
+  githubAdvisoryId   String?
+
+  source             String   // OSV | NVD | GITHUB | CISA_KEV
+  severity           String
+  cvssScore          Float?
+  summary            String   @db.Text
+  packageName        String
+  ecosystem          String
+  affectedVersions   String?  @db.Text  // JSON
+  fixedVersions      String?  @db.Text  // JSON
+  kev                Boolean  @default(false)
+  mitigationGuidance String?  @db.Text
+  references         String?  @db.Text  // JSON
+
+  fetchedAt          DateTime @default(now())
+
+  @@index([scanId])
+  @@index([cveId])
+}
+
+/// AI-generated remediation report for a scan
+model RemediationReport {
+  id         String   @id @default(cuid())
+  scanId     String
+  scan       Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  // The vulnerability this report addresses
+  cveId      String?
+  packageName String
+  ecosystem   String
+
+  // Multiple candidates, stored as JSON
+  candidates String   @db.Text  // JSON: RemediationCandidate[]
+
+  // LLM reasoning trace
+  reasoningTrace String? @db.Text
+  contextUsed    String? @db.Text  // JSON: which chunks were retrieved
+
+  // Validation results
+  validationPassed Boolean @default(false)
+  validationNotes  String? @db.Text
+
+  createdAt  DateTime @default(now())
+
+  @@index([scanId])
+}
+
+/// Repository Security Intelligence Score
+model RSISScore {
+  id         String   @id @default(cuid())
+  scanId     String   @unique
+  scan       Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  // Overall score (0-100, higher = more secure)
+  totalScore Float
+
+  // Component scores
+  severityScore      Float  // Vulnerability severity component
+  remediationScore   Float  // Quality of remediation candidates
+  retrievalScore     Float  // Retrieval quality (embedding similarity)
+  validationScore    Float  // Validation success rate
+  maintainabilityScore Float // Dependency maintainability
+
+  // Weights used (from config)
+  weights    String   @db.Text  // JSON
+
+  // Raw signals used
+  signals    String   @db.Text  // JSON: the measurable inputs
+
+  computedAt DateTime @default(now())
+}
+
+/// ML evaluation results for a scan/analysis
+model EvaluationResult {
+  id      String   @id @default(cuid())
+  scanId  String
+  scan    Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  // Retrieval metrics
+  precisionAtK Float?
+  recallAtK    Float?
+  mrr          Float?
+  ndcg         Float?
+  kValue       Int    @default(5)
+
+  // Recommendation metrics
+  top1Accuracy Float?
+  top3Accuracy Float?
+
+  // Validation metrics
+  buildSuccessRate      Float?
+  vulnReductionRate     Float?
+
+  notes    String? @db.Text
+  runAt    DateTime @default(now())
+
+  @@index([scanId])
+}

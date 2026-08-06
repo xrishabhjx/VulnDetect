@@ -1,0 +1,24 @@
+{
+  "name": "@vuln-shield/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@vuln-shield/core": "workspace:*",
+    "express": "^5.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "@types/node": "^22.15.0",
+    "@types/express": "^5.0.0",
+    "@types/cors": "^2.8.17"
+  }
+}

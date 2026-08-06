@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: vulnshield-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vulnshield
+      POSTGRES_PASSWORD: vulnshield123
+      POSTGRES_DB: vulnshield
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    command: >
+      postgres
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    configs:
+      - source: pg_hba
+        target: /etc/postgresql/pg_hba.conf
+
+configs:
+  pg_hba:
+    content: |
+      local   all   all   trust
+      host    all   all   0.0.0.0/0   md5
+
+volumes:
+  pgdata:
