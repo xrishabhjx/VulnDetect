@@ -2,6 +2,13 @@ import { Octokit } from "octokit";
 import { MANIFEST_FILENAMES } from "../parsers/index.js";
 import type { ManifestFile, Ecosystem, FolderNode } from "../types.js";
 
+export function collectManifestPathsFromTree(tree: FolderNode[]): string[] {
+  return tree
+    .filter((node) => node.type === "blob")
+    .map((node) => node.path)
+    .filter((path) => MANIFEST_FILENAMES.includes(path.split("/").pop() || ""));
+}
+
 /**
  * GitHub API client for fetching repository contents and manifest files.
  */
@@ -43,7 +50,6 @@ export class GitHubClient {
   async detectManifests(owner: string, repo: string): Promise<string[]> {
     const foundPaths: string[] = [];
 
-    // Check root directory
     try {
       const { data } = await this.octokit.rest.repos.getContent({
         owner,
@@ -65,29 +71,16 @@ export class GitHubClient {
       console.error(`Failed to list root directory for ${owner}/${repo}`);
     }
 
-    // Also check common subdirectory patterns for monorepos
-    const commonPaths = ["backend", "frontend", "server", "client", "app", "api"];
-    for (const subDir of commonPaths) {
-      try {
-        const { data } = await this.octokit.rest.repos.getContent({
-          owner,
-          repo,
-          path: subDir,
-        });
-
-        if (Array.isArray(data)) {
-          for (const item of data) {
-            if (
-              item.type === "file" &&
-              MANIFEST_FILENAMES.includes(item.name)
-            ) {
-              foundPaths.push(item.path);
-            }
-          }
+    try {
+      const tree = await this.getRepoTree(owner, repo);
+      const treeManifests = collectManifestPathsFromTree(tree);
+      for (const manifestPath of treeManifests) {
+        if (!foundPaths.includes(manifestPath)) {
+          foundPaths.push(manifestPath);
         }
-      } catch {
-        // Subdirectory doesn't exist — that's fine, skip it
       }
+    } catch (error) {
+      console.warn(`Failed to inspect repository tree for ${owner}/${repo}:`, error);
     }
 
     return foundPaths;

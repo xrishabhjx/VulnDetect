@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   VulnerabilityScanner,
   IntelligenceAnalyzer,
@@ -9,14 +11,69 @@ import {
   disconnectDB,
 } from "@vuln-shield/core";
 
-// Load env from project root
-dotenv.config({ path: "../../.env" });
+// Load env from the repo root .env (and an optional package-local override).
+// src/server.ts → ../../.. → repo root
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+const repoRoot   = path.resolve(__dirname, "../../../");
 
-const app = express();
-const PORT = process.env.PORT || 3001;
+dotenv.config({ path: path.join(repoRoot, ".env") });
+dotenv.config({ path: path.join(repoRoot, "packages/api/.env") });
+
+const app: express.Express = express();
+// Default 3011 to avoid colliding with system Postgres installs that bind 3001.
+// Override via the `PORT` env var (or `packages/api/.env`).
+const PORT = process.env.PORT || 3011;
 
 app.use(cors());
 app.use(express.json());
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+// GitHub owner/repo rules: 1-39 chars, alphanumeric + single hyphens, no
+// leading/trailing hyphen. Repo names may also contain a single `.` for
+// extensions like `.git` (stripped before validation).
+const GH_OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const GH_REPO_RE  = /^[A-Za-z0-9._-]{1,100}$/;
+
+/**
+ * Normalise any supported repo reference to `{ owner, repo }` or return null
+ * if the input is malformed. Accepts:
+ *   - "owner/repo"
+ *   - "https://github.com/owner/repo"
+ *   - "https://github.com/owner/repo.git"
+ *   - "git@github.com:owner/repo.git"
+ *   - "github.com/owner/repo"
+ */
+function parseRepoInput(input: unknown): { owner: string; repo: string } | null {
+  if (typeof input !== "string") return null;
+  let s = input.trim();
+  if (!s) return null;
+
+  // SSH form: git@github.com:owner/repo(.git)
+  const ssh = s.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
+  if (ssh) {
+    return validateOwnerRepo(ssh[1], ssh[2]);
+  }
+
+  // Strip protocol + host
+  s = s.replace(/^https?:\/\//i, "");
+  s = s.replace(/^github\.com\//i, "");
+  // Drop query/fragment
+  s = s.split("?")[0].split("#")[0];
+  // Drop trailing .git
+  s = s.replace(/\.git$/, "");
+
+  const parts = s.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  return validateOwnerRepo(parts[0], parts[1]);
+}
+
+function validateOwnerRepo(owner: string, repo: string): { owner: string; repo: string } | null {
+  if (!GH_OWNER_RE.test(owner)) return null;
+  if (!GH_REPO_RE.test(repo)) return null;
+  return { owner, repo };
+}
 
 // ─── Health Check ───────────────────────────────────────────────────────────
 
@@ -29,14 +86,20 @@ app.get("/api/health", (_req, res) => {
 app.post("/api/scan", async (req, res) => {
   const { repoUrl, useNVD, skipDev } = req.body;
 
-  if (!repoUrl || typeof repoUrl !== "string") {
-    res.status(400).json({ error: "repoUrl is required" });
+  const parsed = parseRepoInput(repoUrl);
+  if (!parsed) {
+    res.status(400).json({
+      error:
+        "Invalid repoUrl. Expected 'owner/repo' or a full GitHub URL " +
+        "(e.g. 'https://github.com/owner/repo').",
+    });
     return;
   }
+  const normalised = `${parsed.owner}/${parsed.repo}`;
 
   try {
     const scanner = new VulnerabilityScanner();
-    const report = await scanner.scan(repoUrl, {
+    const report = await scanner.scan(normalised, {
       useNVD: useNVD || false,
       skipDev: skipDev || false,
       persist: true,
@@ -106,14 +169,20 @@ app.get("/api/scans", async (_req, res) => {
 app.post("/api/analyze", async (req, res) => {
   const { repoUrl, useNVD, skipDev, skipEmbedding, skipSimilarRepos, skipReasoning, maxRemediations } = req.body;
 
-  if (!repoUrl || typeof repoUrl !== "string") {
-    res.status(400).json({ error: "repoUrl is required" });
+  const parsed = parseRepoInput(repoUrl);
+  if (!parsed) {
+    res.status(400).json({
+      error:
+        "Invalid repoUrl. Expected 'owner/repo' or a full GitHub URL " +
+        "(e.g. 'https://github.com/owner/repo').",
+    });
     return;
   }
+  const normalised = `${parsed.owner}/${parsed.repo}`;
 
   try {
     const analyzer = new IntelligenceAnalyzer();
-    const result = await analyzer.analyze(repoUrl, {
+    const result = await analyzer.analyze(normalised, {
       useNVD: useNVD || false,
       skipDev: skipDev || false,
       skipEmbedding: skipEmbedding || false,
@@ -309,24 +378,90 @@ app.get("/api/evaluate/:id", async (req, res) => {
 });
 
 // ─── Start Server ───────────────────────────────────────────────────────────
+// Only start the listener when this file is the entrypoint. When tests
+// import the app via `import { app } from "./server.js"`, we skip the
+// listen() and signal handlers.
 
-app.listen(PORT, () => {
-  console.log(`\n  🛡️  VulnShield Intelligence API running on http://localhost:${PORT}`);
-  console.log(`  📚  Endpoints:`);
-  console.log(`     GET  /api/health`);
-  console.log(`     POST /api/scan            { repoUrl: "owner/repo" }`);
-  console.log(`     GET  /api/scan/:id`);
-  console.log(`     GET  /api/scans`);
-  console.log(`     POST /api/analyze         { repoUrl: "owner/repo" }`);
-  console.log(`     GET  /api/analyze/:id`);
-  console.log(`     GET  /api/analyze/:id/rsis`);
-  console.log(`     GET  /api/similar/:id`);
-  console.log(`     POST /api/evaluate        { scanId: "..." }`);
-  console.log(`     GET  /api/evaluate/:id\n`);
+export { app, parseRepoInput };
+
+const isEntrypoint =
+  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename);
+
+let server: import("http").Server | null = null;
+
+if (isEntrypoint) {
+  server = app.listen(PORT, () => {
+    console.log(`\n  🛡️  VulnShield Intelligence API running on http://localhost:${PORT}`);
+    console.log(`  📚  Endpoints:`);
+    console.log(`     GET  /api/health`);
+    console.log(`     POST /api/scan            { repoUrl: "owner/repo" }`);
+    console.log(`     GET  /api/scan/:id`);
+    console.log(`     GET  /api/scans`);
+    console.log(`     POST /api/analyze         { repoUrl: "owner/repo" }`);
+    console.log(`     GET  /api/analyze/:id`);
+    console.log(`     GET  /api/analyze/:id/rsis`);
+    console.log(`     GET  /api/similar/:id`);
+    console.log(`     POST /api/evaluate        { scanId: "..." }`);
+    console.log(`     GET  /api/evaluate/:id\n`);
+  });
+}
+
+// ─── Global Error Handler ────────────────────────────────────────────────────
+// Express 5 propagates async route errors here. Without this, a single
+// throw will crash the process. Must be the LAST `app.use`.
+
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const message = err instanceof Error ? err.message : "Internal server error";
+  console.error("[API] Unhandled error:", err);
+  if (res.headersSent) {
+    // Can't send a new response — destroy the socket so the client knows.
+    return;
+  }
+  res.status(500).json({ error: message });
 });
 
-// Graceful shutdown
-process.on("SIGINT", async () => {
-  await disconnectDB();
-  process.exit(0);
+// ─── Graceful Shutdown ───────────────────────────────────────────────────────
+
+let shuttingDown = false;
+
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n[API] Received ${signal}, shutting down gracefully...`);
+
+  // Stop accepting new connections; let in-flight requests finish.
+  if (server) {
+    server.close((err) => {
+      if (err) console.error("[API] Error closing HTTP server:", err);
+    });
+  }
+
+  try {
+    await disconnectDB();
+    console.log("[API] Prisma disconnected.");
+  } catch (err) {
+    console.error("[API] Error disconnecting Prisma:", err);
+  } finally {
+    process.exit(0);
+  }
+
+  // Hard exit if shutdown takes too long.
+  setTimeout(() => {
+    console.error("[API] Forced exit after 10s shutdown timeout.");
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+if (isEntrypoint) {
+  process.on("SIGINT",  () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+}
+
+// Surface unhandled errors instead of dying silently.
+process.on("unhandledRejection", (reason) => {
+  console.error("[API] Unhandled promise rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[API] Uncaught exception:", err);
+  void shutdown("uncaughtException");
 });

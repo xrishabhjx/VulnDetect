@@ -219,11 +219,14 @@ model RSISScore {
   totalScore Float
 
   // Component scores
-  severityScore      Float  // Vulnerability severity component
-  remediationScore   Float  // Quality of remediation candidates
-  retrievalScore     Float  // Retrieval quality (embedding similarity)
-  validationScore    Float  // Validation success rate
-  maintainabilityScore Float // Dependency maintainability
+  // Defaults of 0 let `prisma db push` backfill existing rows safely;
+  // the analyzer overwrites these on every persist.
+  severityScore        Float  @default(0)  // Vulnerability severity component
+  remediationScore     Float  @default(0)  // Quality of remediation candidates
+  retrievalScore       Float  @default(0)  // Retrieval quality (embedding similarity)
+  validationScore      Float  @default(0)  // Validation success rate
+  maintainabilityScore Float  @default(0)  // Dependency maintainability
+  compatibilityScore   Float  @default(0)  // % of proposed upgrades that respect SemVer (patch/minor)
 
   // Weights used (from config)
   weights    String   @db.Text  // JSON

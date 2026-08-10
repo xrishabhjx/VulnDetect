@@ -120,6 +120,7 @@ export class RSISScorer {
     return {
       totalScore: parseFloat(totalScore.toFixed(2)),
       securityScore: parseFloat(components.securityScore.toFixed(2)),
+      remediationScore: parseFloat(components.remediationScore.toFixed(2)),
       retrievalScore: parseFloat(components.retrievalScore.toFixed(2)),
       validationScore: parseFloat(components.validationScore.toFixed(2)),
       maintainabilityScore: parseFloat(components.maintainabilityScore.toFixed(2)),
@@ -190,6 +191,7 @@ export class RSISScorer {
 
   private computeComponents(signals: RSISSignals): {
     securityScore: number;
+    remediationScore: number;
     retrievalScore: number;
     validationScore: number;
     maintainabilityScore: number;
@@ -224,8 +226,25 @@ export class RSISScorer {
     // 5. Compatibility Score
     const compatibilityScore = Math.min(100, signals.semverCompatRate);
 
+    // 6. Remediation Quality Score — blends candidate quality, validation,
+    //    and confidence so the score reflects "how good are the proposed fixes",
+    //    not just whether any exist.
+    const candidateCoverage =
+      signals.totalVulns > 0
+        ? Math.min(1, signals.totalCandidates / signals.totalVulns)
+        : 0;
+    const confidenceRate =
+      signals.totalCandidates > 0
+        ? signals.highConfidenceCandidates / signals.totalCandidates
+        : 0;
+    const remediationScore = Math.min(
+      100,
+      (confidenceRate * 60) + (validationScore / 100) * 30 + (candidateCoverage * 10)
+    );
+
     return {
       securityScore,
+      remediationScore,
       retrievalScore,
       validationScore,
       maintainabilityScore,

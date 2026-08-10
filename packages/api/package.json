@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "pnpm --filter @vuln-shield/core build",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "start": "node dist/server.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@vuln-shield/core": "workspace:*",
@@ -19,6 +22,9 @@
     "typescript": "^5.8.0",
     "@types/node": "^22.15.0",
     "@types/express": "^5.0.0",
-    "@types/cors": "^2.8.17"
+    "@types/cors": "^2.8.17",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2",
+    "vitest": "^3.1.0"
   }
 }

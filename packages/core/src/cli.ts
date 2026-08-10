@@ -6,6 +6,8 @@ import dotenv from "dotenv";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { VulnerabilityScanner } from "./scanner.js";
 import { IntelligenceAnalyzer } from "./analyzer.js";
 import { RSISScorer } from "./intelligence/rsis-scorer.js";
@@ -16,8 +18,14 @@ import { disconnectDB } from "./db.js";
 import { writeFileSync } from "node:fs";
 import type { ScanReport, Severity } from "./types.js";
 
-dotenv.config({ path: "../../.env" });
-dotenv.config({ path: ".env" });
+// Load env from the repo root .env (and an optional package-local override).
+// src/cli.ts → ../../.. → repo root
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+const repoRoot   = path.resolve(__dirname, "../../../");
+
+dotenv.config({ path: path.join(repoRoot, ".env") });
+dotenv.config({ path: path.join(repoRoot, "packages/core/.env") });
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

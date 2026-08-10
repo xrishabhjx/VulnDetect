@@ -495,10 +495,14 @@ export class IntelligenceAnalyzer {
       update: {
         totalScore: rsis.totalScore,
         severityScore: rsis.securityScore,
-        remediationScore: rsis.compatibilityScore,
+        // Remediation quality stays on its own column — previously we
+        // mistakenly stored compatibilityScore here, which silently
+        // dropped the remediation dimension.
+        remediationScore: rsis.remediationScore ?? rsis.compatibilityScore,
         retrievalScore: rsis.retrievalScore,
         validationScore: rsis.validationScore,
         maintainabilityScore: rsis.maintainabilityScore,
+        compatibilityScore: rsis.compatibilityScore,
         weights: JSON.stringify(rsis.weights),
         signals: JSON.stringify(rsis.signals),
       },
@@ -506,10 +510,11 @@ export class IntelligenceAnalyzer {
         scanId,
         totalScore: rsis.totalScore,
         severityScore: rsis.securityScore,
-        remediationScore: rsis.compatibilityScore,
+        remediationScore: rsis.remediationScore ?? rsis.compatibilityScore,
         retrievalScore: rsis.retrievalScore,
         validationScore: rsis.validationScore,
         maintainabilityScore: rsis.maintainabilityScore,
+        compatibilityScore: rsis.compatibilityScore,
         weights: JSON.stringify(rsis.weights),
         signals: JSON.stringify(rsis.signals),
       },

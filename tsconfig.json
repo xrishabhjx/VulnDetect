@@ -1,0 +1,8 @@
+{
+  "//" : "Solution tsconfig — `tsc -b` builds every referenced project in dependency order.",
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/api" }
+  ]
+}

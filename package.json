@@ -6,10 +6,13 @@
   "scripts": {
     "dev:api": "pnpm --filter @vuln-shield/api dev",
     "dev:web": "pnpm --filter @vuln-shield/web dev",
+    "dev": "pnpm -r --parallel --filter @vuln-shield/api --filter @vuln-shield/web dev",
     "build": "pnpm -r build",
+    "typecheck": "pnpm -r --filter @vuln-shield/core --filter @vuln-shield/api run typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "scan": "pnpm --filter @vuln-shield/core scan"
+    "scan": "pnpm --filter @vuln-shield/core scan",
+    "db:setup": "pnpm --filter @vuln-shield/core db:setup"
   },
   "engines": {
     "node": ">=20.0.0"

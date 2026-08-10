@@ -1,0 +1,44 @@
+# Build context exclusions — keep image builds small and reproducible.
+**/node_modules
+**/dist
+**/.next
+**/out
+**/coverage
+**/.turbo
+**/.tsbuildinfo
+**/*.tsbuildinfo
+
+# Local env files
+.env
+.env.*
+!.env.example
+!**/.env.example
+packages/web/.env.local
+packages/web/.env.*.local
+packages/web/next-env.d.ts
+
+# Prisma local sqlite files (we use Postgres, but be safe)
+**/*.db
+**/*.db-journal
+
+# VCS
+.git
+.gitattributes
+.gitignore
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Test output
+**/test-results
+**/playwright-report
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

@@ -15,7 +15,7 @@ import { ContextRetriever } from "./retriever.js";
 // ─── LLM Provider Configuration ──────────────────────────────────────────────
 
 const GROQ_DEFAULT_MODEL   = "llama-3.3-70b-versatile";
-const GEMINI_DEFAULT_MODEL = "gemini-1.5-flash";
+const GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
 
 interface LLMProvider {
   name: string;
@@ -225,7 +225,7 @@ export class ContextReasoner {
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
     if (geminiKey) {
       chain.push({
-        name: "Gemini (gemini-1.5-flash)",
+        name: "Gemini (gemini-2.5-flash)",
         baseUrl: "https://generativelanguage.googleapis.com/v1beta",
         apiKey: geminiKey,
         modelName: process.env.GEMINI_MODEL ?? GEMINI_DEFAULT_MODEL,

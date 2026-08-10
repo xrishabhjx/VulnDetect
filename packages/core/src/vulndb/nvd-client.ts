@@ -55,18 +55,25 @@ interface NVDCve {
  *
  * Rate limits:
  * - Without key: 5 requests per 30 seconds
- * - With key: 50 requests per 30 seconds
+ * - With key:    50 requests per 30 seconds
+ *
+ * The rate limiter uses a serialized promise queue so concurrent callers
+ * (e.g. parallel `Promise.all` over vulnerabilities) still respect the
+ * per-instance interval. A bare timestamp would race under concurrency.
  */
 export class NVDClient implements VulnDBClient {
   source = "NVD" as const;
   private baseUrl = "https://services.nvd.nist.gov/rest/json/cves/2.0";
   private apiKey: string | undefined;
-  private lastRequestTime = 0;
   private minRequestInterval: number; // ms between requests
+  private queue: Promise<void> = Promise.resolve();
+  private lastRequestTime = 0;
+  private nextAllowedTime = 0;
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey || process.env.NVD_API_KEY;
-    // With key: 50 req/30s = 600ms apart. Without: 5 req/30s = 6000ms apart
+    // With key: 50 req/30s = 600ms apart. Without: 5 req/30s = 6000ms apart.
+    // Add a small safety margin so we don't trip the limit on clock drift.
     this.minRequestInterval = this.apiKey ? 650 : 6500;
   }
 
@@ -102,14 +109,18 @@ export class NVDClient implements VulnDBClient {
 
       const response = await fetch(`${this.baseUrl}?${params}`, { headers });
 
-      if (response.status === 403) {
-        console.error("NVD rate limit exceeded. Waiting...");
-        await this.sleep(30000);
+      if (response.status === 403 || response.status === 429) {
+        console.error(
+          `[NVD] Rate limit hit (HTTP ${response.status}) for ${searchName}. ` +
+            `Backing off 30s before next call.`
+        );
+        // Push the next-allowed time forward so the queue pauses too.
+        this.nextAllowedTime = Date.now() + 30_000;
         return [];
       }
 
       if (!response.ok) {
-        console.error(`NVD query failed for ${searchName}: ${response.status}`);
+        console.error(`[NVD] Query failed for ${searchName}: HTTP ${response.status}`);
         return [];
       }
 
@@ -212,17 +223,28 @@ export class NVDClient implements VulnDBClient {
   }
 
   /**
-   * Simple rate limiter to respect NVD API limits.
+   * Concurrency-safe rate limiter. Each call returns a promise that
+   * resolves only when the request is permitted by the per-instance
+   * interval. By chaining onto `this.queue`, we serialize all NVD
+   * requests even when callers invoke them in parallel.
    */
-  private async rateLimit(): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - this.lastRequestTime;
+  private rateLimit(): Promise<void> {
+    // Append a new task to the existing queue. The closure captures the
+    // *current* `nextAllowedTime` at the moment this task runs (i.e.
+    // after all previously-queued tasks have completed).
+    const task = this.queue.then(async () => {
+      const now = Date.now();
+      const wait = Math.max(0, this.nextAllowedTime - now);
+      if (wait > 0) {
+        await this.sleep(wait);
+      }
+      this.lastRequestTime = Date.now();
+      this.nextAllowedTime = this.lastRequestTime + this.minRequestInterval;
+    });
 
-    if (elapsed < this.minRequestInterval) {
-      await this.sleep(this.minRequestInterval - elapsed);
-    }
-
-    this.lastRequestTime = Date.now();
+    // Don't let an error in one queued request poison subsequent ones.
+    this.queue = task.catch(() => undefined);
+    return task;
   }
 
   private sleep(ms: number): Promise<void> {

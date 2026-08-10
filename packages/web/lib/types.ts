@@ -74,6 +74,7 @@ export interface RSISScoreRow {
   retrievalScore: number;
   validationScore: number;
   maintainabilityScore: number;
+  compatibilityScore: number;
   weights: string; // JSON string
   signals: string; // JSON string
 }

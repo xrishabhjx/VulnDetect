@@ -5,7 +5,6 @@ import Link from "next/link";
 import { api, grade, safeParse, severityCounts, SEVERITY_ORDER } from "@/lib/api";
 import type {
   AnalysisRow,
-  Dependency,
   RemediationCandidate,
   RemediationReport,
   Severity,
@@ -239,11 +238,12 @@ function SeverityBar({ counts, total }: { counts: Record<Severity, number>; tota
 
 function RsisBreakdown({ rsis }: { rsis: NonNullable<AnalysisRow["rsisScore"]> }) {
   const dims = [
-    { label: "Security", value: rsis.severityScore },
-    { label: "Retrieval", value: rsis.retrievalScore },
-    { label: "Validation", value: rsis.validationScore },
-    { label: "Maintainability", value: rsis.maintainabilityScore },
-    { label: "Remediation", value: rsis.remediationScore },
+    { label: "Security",         value: rsis.severityScore },
+    { label: "Retrieval",        value: rsis.retrievalScore },
+    { label: "Validation",       value: rsis.validationScore },
+    { label: "Maintainability",  value: rsis.maintainabilityScore },
+    { label: "Remediation",      value: rsis.remediationScore },
+    { label: "Compatibility",    value: rsis.compatibilityScore },
   ];
   return (
     <Card>
@@ -333,7 +333,11 @@ function ActionTag({ action }: { action: RemediationCandidate["action"] }) {
   );
 }
 
-function DependencyRow({ dep }: { dep: Dependency }) {
+function DependencyRow({
+  dep,
+}: {
+  dep: AnalysisRow["dependencies"][number];
+}) {
   return (
     <Card>
       <div className="flex flex-wrap items-center gap-2">

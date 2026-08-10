@@ -17,6 +17,43 @@ services:
     configs:
       - source: pg_hba
         target: /etc/postgresql/pg_hba.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vulnshield -d vulnshield"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: vulnshield-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://vulnshield:vulnshield123@postgres:5432/vulnshield
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001
+    container_name: vulnshield-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
 
 configs:
   pg_hba:

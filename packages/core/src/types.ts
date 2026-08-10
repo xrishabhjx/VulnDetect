@@ -451,6 +451,7 @@ export interface RSISLiteratureRationale {
 export interface RSISScore {
   totalScore: number;
   securityScore: number;       // Formerly severityScore
+  remediationScore: number;    // Quality of remediation candidates
   retrievalScore: number;
   validationScore: number;
   maintainabilityScore: number;
