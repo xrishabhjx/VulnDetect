@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-slate-950 text-slate-200 antialiased;
+}
+
+/* Thin scrollbar for long lists on the analysis page */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
