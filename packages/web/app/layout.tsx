@@ -1,31 +1,46 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import "./globals.css";
+import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
+import "@/app/globals.css";
+import { Layout } from "@/components/layout/Layout";
 
-export const metadata: Metadata = {
-  title: "VulnShield — Repository Security Intelligence",
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
+
+export const metadata = {
+  title: "VulnShield — AI-Powered Vulnerability Detection & Remediation",
   description:
-    "Evidence-grounded vulnerability reasoning: scan a GitHub repo, get a Repository Security Intelligence Score and ranked remediations.",
+    "Scan GitHub repositories with intelligent knowledge graphs and LLM reasoning. Understand why each vulnerability matters with evidence-backed remediation.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en">
-      <body>
-        <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-            <Link href="/" className="flex items-center gap-2 font-semibold">
-              <span aria-hidden className="text-xl">
-                🛡️
-              </span>
-              <span className="text-lg tracking-tight text-white">VulnShield</span>
-              <span className="hidden text-xs text-slate-500 sm:inline">
-                Repository Security Intelligence
-              </span>
-            </Link>
-          </div>
-        </header>
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+    <html
+      lang="en"
+      className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+    >
+      <body className="bg-background text-primary font-body antialiased">
+        <Layout>{children}</Layout>
       </body>
     </html>
   );

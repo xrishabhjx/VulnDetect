@@ -20,6 +20,8 @@ model Scan {
   totalDeps    Int          @default(0)
   totalVulns   Int          @default(0)
   errorMessage String?      @db.Text
+  knowledgeGraph String?    @db.Text // JSON: RepositoryKnowledgeGraph
+  intelligenceSummary String? @db.Text // JSON: IntelligenceSummary
   createdAt    DateTime     @default(now())
   completedAt  DateTime?
   dependencies Dependency[]
@@ -69,6 +71,7 @@ model Vulnerability {
   kev                Boolean    @default(false)  // Is in CISA Known Exploited Vulnerabilities
   githubAdvisoryId   String?
   mitigationGuidance String?    @db.Text
+  osvId              String?
 
   @@index([dependencyId])
   @@index([cveId])
@@ -103,6 +106,18 @@ model RepositoryMetadata {
   forks           Int      @default(0)
   openIssues      Int      @default(0)
   lastPushed      DateTime?
+
+  // Extended repository profile fields
+  architecture       String?
+  repositoryType     String?
+  database           String?
+  orm                String?
+  authentication     String?
+  deployment         String?
+  ciCdPlatform       String?
+  testingFramework   String?
+  packageManagers    String?  @db.Text // JSON array
+  primaryDependencies String? @db.Text // JSON array
 
   createdAt       DateTime @default(now())
 }
@@ -145,6 +160,11 @@ model SimilarRepository {
   description  String?  @db.Text
   language     String?
   stars        Int      @default(0)
+  forks        Int      @default(0)
+  openIssues   Int      @default(0)
+  pushAgeDays  Int      @default(0)
+  maintenanceActivity String @default("active")
+  healthScore  Float    @default(0)
   topics       String?  @db.Text  // JSON array
   similarityScore Float @default(0)  // cosine similarity with target repo
   githubUrl    String
@@ -221,6 +241,7 @@ model RSISScore {
   // Component scores
   severityScore      Float  // Vulnerability severity component
   remediationScore   Float  // Quality of remediation candidates
+  compatibilityScore Float? // SemVer compatibility; legacy rows use remediationScore
   retrievalScore     Float  // Retrieval quality (embedding similarity)
   validationScore    Float  // Validation success rate
   maintainabilityScore Float // Dependency maintainability

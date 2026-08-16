@@ -1,17 +1,284 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-:root {
-  color-scheme: dark;
+/* ─── Design Tokens (Tailwind v4 CSS-first config) ─────────────────────── */
+
+@theme {
+  --color-*: initial;
+
+  --color-transparent: transparent;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --color-background: #0B0D10;
+  --color-surface: #14171B;
+  --color-surface-hover: #1C2128;
+  --color-border: #262B31;
+  --color-primary: #E8EAED;
+  --color-secondary: #8B92A0;
+  --color-accent: #5B8DEF;
+  --color-accent-hover: #4A7FE0;
+  --color-disabled: #5A5F66;
+
+  --color-critical: #E5484D;
+  --color-high: #F5A524;
+  --color-medium: #F5D90A;
+  --color-low: #4CC38A;
+
+  --font-display: var(--font-space-grotesk), "Space Grotesk", sans-serif;
+  --font-body: var(--font-inter), "Inter", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
+  --font-sans: var(--font-inter), "Inter", sans-serif;
 }
 
-body {
-  @apply bg-slate-950 text-slate-200 antialiased;
+/* ─── Base ─────────────────────────────────────────────────────────────── */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--color-primary);
+  }
+
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  input, textarea, select {
+    font-family: var(--font-body);
+  }
 }
 
-/* Thin scrollbar for long lists on the analysis page */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+/* ─── Components ───────────────────────────────────────────────────────── */
+
+@layer components {
+
+  /* ── Buttons ── */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 12px 20px;
+    transition: all 150ms ease;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    white-space: nowrap;
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background-color: var(--color-accent);
+    color: var(--color-background);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--color-accent-hover);
+  }
+
+  .btn-primary:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .btn-secondary {
+    background-color: transparent;
+    color: var(--color-primary);
+    border: 1px solid var(--color-border);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--color-accent);
+  }
+
+  .btn-secondary:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .btn-ghost {
+    background-color: transparent;
+    color: var(--color-accent);
+    padding: 8px 16px;
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background-color: rgba(91, 141, 239, 0.08);
+  }
+
+  .btn-danger {
+    background-color: var(--color-critical);
+    color: var(--color-white);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  /* ── Cards ── */
+
+  .card {
+    background-color: var(--color-surface);
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--color-border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+
+  .card-hover {
+    transition: border-color 150ms ease, background-color 150ms ease;
+  }
+
+  .card-hover:hover {
+    border-color: var(--color-accent);
+    background-color: rgba(91, 141, 239, 0.03);
+  }
+
+  /* ── Badges ── */
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 9999px;
+    padding: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    line-height: 1.4;
+  }
+
+  .badge-critical {
+    background-color: rgba(229, 72, 77, 0.15);
+    color: #E5484D;
+    border-color: rgba(229, 72, 77, 0.3);
+  }
+
+  .badge-high {
+    background-color: rgba(245, 165, 36, 0.15);
+    color: #F5A524;
+    border-color: rgba(245, 165, 36, 0.3);
+  }
+
+  .badge-medium {
+    background-color: rgba(245, 217, 10, 0.15);
+    color: #F5D90A;
+    border-color: rgba(245, 217, 10, 0.3);
+  }
+
+  .badge-low {
+    background-color: rgba(76, 195, 138, 0.15);
+    color: #4CC38A;
+    border-color: rgba(76, 195, 138, 0.3);
+  }
+
+  .badge-unknown {
+    background-color: rgba(139, 146, 160, 0.15);
+    color: #8B92A0;
+    border-color: rgba(139, 146, 160, 0.3);
+  }
+
+  .badge-accent {
+    background-color: rgba(91, 141, 239, 0.15);
+    color: #5B8DEF;
+    border-color: rgba(91, 141, 239, 0.3);
+  }
+
+  /* ── Divider ── */
+
+  .divider {
+    height: 1px;
+    background-color: var(--color-border);
+  }
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-secondary);
+}
+
+/* ─── Animations ───────────────────────────────────────────────────────── */
+
+@keyframes reasoning-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reasoning-step {
+  animation: reasoning-fade-in 400ms ease-out both;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* ─── Reduced Motion ───────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
 }

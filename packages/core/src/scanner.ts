@@ -198,6 +198,7 @@ export class VulnerabilityScanner {
             vulnerabilities: {
               create: r.vulnerabilities.map((v) => ({
                 cveId: v.cveId,
+                osvId: v.osvId ?? null,
                 severity: v.severity,
                 cvssScore: v.cvssScore,
                 cvssVector: v.cvssVector,
@@ -209,6 +210,9 @@ export class VulnerabilityScanner {
                 references: JSON.stringify(v.references),
                 source: v.source,
                 affectedRange: v.affectedRange,
+                kev: v.kev,
+                githubAdvisoryId: v.githubAdvisoryId ?? null,
+                mitigationGuidance: v.mitigationGuidance,
               })),
             },
           })),

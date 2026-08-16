@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { GitHubClient } from "../src/github/client.js";
 import { NpmParser } from "../src/parsers/npm-parser.js";
 import { MavenParser } from "../src/parsers/maven-parser.js";
 import { PythonParser } from "../src/parsers/python-parser.js";
@@ -180,5 +181,21 @@ describe("getParserForFile", () => {
     expect(getParserForFile("pom.xml")?.ecosystem).toBe("maven");
     expect(getParserForFile("requirements.txt")?.ecosystem).toBe("pypi");
     expect(getParserForFile("unknown.file")).toBeNull();
+  });
+});
+
+describe("GitHubClient", () => {
+  it("should parse full GitHub HTTPS URLs and .git suffixes", () => {
+    const client = new GitHubClient();
+
+    expect(client.parseRepoUrl("https://github.com/xrishabh/VulnDetect.git")).toEqual({
+      owner: "xrishabh",
+      repo: "VulnDetect",
+    });
+
+    expect(client.parseRepoUrl("github.com/octocat/Hello-World")).toEqual({
+      owner: "octocat",
+      repo: "Hello-World",
+    });
   });
 });

@@ -77,6 +77,7 @@ export {
 // Research Upgrade Types
 export type {
   RepositoryMetadata,
+  RepositoryProfile,
   FolderNode,
   ChunkType,
   RepoChunk,

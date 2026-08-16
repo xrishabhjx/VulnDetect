@@ -309,7 +309,8 @@ export class IntelligenceAnalyzer {
     // ── Persistence ───────────────────────────────────────────────────────────
     if (opts.persist && scanId) {
       await this.persistRemediations(scanId, remediations);
-      await this.persistRSIS(scanId, rsis);
+        await this.persistRSIS(scanId, rsis);
+        await this.persistAnalysisArtifacts(scanId, knowledgeGraph, intelligenceSummary);
     }
 
     console.log(`\n[Analyzer] ✅ Analysis complete!`);
@@ -421,7 +422,33 @@ export class IntelligenceAnalyzer {
     const db = getDB();
     await db.repositoryMetadata.upsert({
       where: { scanId },
-      update: {},
+      update: {
+        language: profile.language,
+        languages: JSON.stringify(profile.languages),
+        framework: profile.framework,
+        purpose: profile.purpose,
+        topics: JSON.stringify(profile.topics),
+        description: profile.description,
+        folderHierarchy: JSON.stringify(profile.folderHierarchy),
+        totalFiles: profile.totalFiles,
+        hasDockerfile: profile.hasDockerfile,
+        hasCiCd: profile.hasCiCd,
+        hasTests: profile.hasTests,
+        stars: profile.stars,
+        forks: profile.forks,
+        openIssues: profile.openIssues,
+        lastPushed: profile.lastPushed ? new Date(profile.lastPushed) : null,
+        architecture: profile.architecture,
+        repositoryType: profile.repositoryType,
+        database: profile.database,
+        orm: profile.orm,
+        authentication: profile.authentication,
+        deployment: profile.deployment,
+        ciCdPlatform: profile.ciCdPlatform,
+        testingFramework: profile.testingFramework,
+        packageManagers: JSON.stringify(profile.packageManagers),
+        primaryDependencies: JSON.stringify(profile.primaryDependencies),
+      },
       create: {
         scanId,
         language: profile.language,
@@ -439,6 +466,16 @@ export class IntelligenceAnalyzer {
         forks: profile.forks,
         openIssues: profile.openIssues,
         lastPushed: profile.lastPushed ? new Date(profile.lastPushed) : null,
+        architecture: profile.architecture,
+        repositoryType: profile.repositoryType,
+        database: profile.database,
+        orm: profile.orm,
+        authentication: profile.authentication,
+        deployment: profile.deployment,
+        ciCdPlatform: profile.ciCdPlatform,
+        testingFramework: profile.testingFramework,
+        packageManagers: JSON.stringify(profile.packageManagers),
+        primaryDependencies: JSON.stringify(profile.primaryDependencies),
       },
     });
   }
@@ -455,6 +492,11 @@ export class IntelligenceAnalyzer {
           description: r.description,
           language: r.language,
           stars: r.stars,
+          forks: r.forks,
+          openIssues: r.openIssues,
+          pushAgeDays: r.pushAgeDays,
+          maintenanceActivity: r.maintenanceActivity,
+          healthScore: r.healthScore,
           topics: JSON.stringify(r.topics),
           similarityScore: r.similarityScore,
           githubUrl: r.githubUrl,
@@ -496,6 +538,7 @@ export class IntelligenceAnalyzer {
         totalScore: rsis.totalScore,
         severityScore: rsis.securityScore,
         remediationScore: rsis.compatibilityScore,
+        compatibilityScore: rsis.compatibilityScore,
         retrievalScore: rsis.retrievalScore,
         validationScore: rsis.validationScore,
         maintainabilityScore: rsis.maintainabilityScore,
@@ -507,11 +550,27 @@ export class IntelligenceAnalyzer {
         totalScore: rsis.totalScore,
         severityScore: rsis.securityScore,
         remediationScore: rsis.compatibilityScore,
+        compatibilityScore: rsis.compatibilityScore,
         retrievalScore: rsis.retrievalScore,
         validationScore: rsis.validationScore,
         maintainabilityScore: rsis.maintainabilityScore,
         weights: JSON.stringify(rsis.weights),
         signals: JSON.stringify(rsis.signals),
+      },
+    });
+  }
+
+  private async persistAnalysisArtifacts(
+    scanId: string,
+    knowledgeGraph: import("./types.js").RepositoryKnowledgeGraph,
+    intelligenceSummary: import("./types.js").IntelligenceSummary
+  ): Promise<void> {
+    const db = getDB();
+    await db.scan.update({
+      where: { id: scanId },
+      data: {
+        knowledgeGraph: JSON.stringify(knowledgeGraph),
+        intelligenceSummary: JSON.stringify(intelligenceSummary),
       },
     });
   }

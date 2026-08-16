@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -8,15 +10,103 @@ import {
   getDB,
   disconnectDB,
 } from "@vuln-shield/core";
+import type {
+  EvalMetrics,
+  RepositoryProfile,
+  RSISScore,
+  ScanReport,
+} from "@vuln-shield/core";
 
-// Load env from project root
-dotenv.config({ path: "../../.env" });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load env from the actual workspace root, not from the process CWD.
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3005;
+const allowedOrigins = new Set(
+  (process.env.WEB_ORIGIN || "http://localhost:3000")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
 
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Origin not allowed by CORS"));
+  },
+}));
 app.use(express.json());
+
+function parseJson<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function toScanReport(scan: any): ScanReport {
+  const severityCounts: ScanReport["severityCounts"] = {
+    CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, UNKNOWN: 0,
+  };
+  const results = (scan.dependencies ?? []).map((dep: any) => ({
+    dependency: { name: dep.name, version: dep.version, ecosystem: dep.ecosystem, isDev: dep.isDev, manifestPath: dep.manifestPath },
+    vulnerabilities: (dep.vulnerabilities ?? []).map((v: any) => {
+      const severity = severityCounts[v.severity as keyof typeof severityCounts] === undefined ? "UNKNOWN" : v.severity;
+      severityCounts[severity as keyof typeof severityCounts] += 1;
+      return {
+        cveId: v.cveId, osvId: v.osvId ?? undefined, githubAdvisoryId: v.githubAdvisoryId ?? undefined,
+        severity, cvssScore: v.cvssScore ?? null, cvssVector: v.cvssVector ?? null,
+        summary: v.summary, details: v.details ?? null, publishedDate: v.publishedDate ?? null, modifiedDate: v.modifiedDate ?? null,
+        fixedVersions: parseJson<string[]>(v.fixedVersions, []), references: parseJson<string[]>(v.references, []),
+        source: v.source, affectedRange: v.affectedRange ?? null, kev: Boolean(v.kev), mitigationGuidance: v.mitigationGuidance ?? null,
+      };
+    }),
+  }));
+  return {
+    scanId: scan.id, repoUrl: scan.repoUrl, repoOwner: scan.repoOwner, repoName: scan.repoName,
+    scannedAt: (scan.completedAt ?? scan.createdAt ?? new Date()).toISOString(),
+    totalDependencies: scan.totalDeps ?? results.length,
+    totalVulnerabilities: scan.totalVulns ?? results.reduce((total: number, result: any) => total + result.vulnerabilities.length, 0),
+    severityCounts, results,
+  } as ScanReport;
+}
+
+function toProfile(metadata: any): RepositoryProfile | null {
+  if (!metadata) return null;
+  return {
+    language: metadata.language ?? null, languages: parseJson(metadata.languages, {}), framework: metadata.framework ?? null,
+    purpose: metadata.purpose ?? null, topics: parseJson(metadata.topics, []), description: metadata.description ?? null,
+    folderHierarchy: parseJson(metadata.folderHierarchy, []), totalFiles: metadata.totalFiles ?? 0,
+    hasDockerfile: Boolean(metadata.hasDockerfile), hasCiCd: Boolean(metadata.hasCiCd), hasTests: Boolean(metadata.hasTests),
+    stars: metadata.stars ?? 0, forks: metadata.forks ?? 0, openIssues: metadata.openIssues ?? 0,
+    lastPushed: metadata.lastPushed?.toISOString?.() ?? null, architecture: metadata.architecture ?? null,
+    repositoryType: metadata.repositoryType ?? "unknown", database: metadata.database ?? null, orm: metadata.orm ?? null,
+    authentication: metadata.authentication ?? null, deployment: metadata.deployment ?? null,
+    ciCdPlatform: metadata.ciCdPlatform ?? null, testingFramework: metadata.testingFramework ?? null,
+    packageManagers: parseJson(metadata.packageManagers, []), primaryDependencies: parseJson(metadata.primaryDependencies, []),
+  } as RepositoryProfile;
+}
+
+function toRsis(record: any): RSISScore {
+  const weights = parseJson(record?.weights, { security: 0.3, retrieval: 0.2, validation: 0.2, maintainability: 0.15, compatibility: 0.15 });
+  const signals = parseJson(record?.signals, { criticalVulns: 0, highVulns: 0, mediumVulns: 0, lowVulns: 0, totalVulns: 0, totalDeps: 0, highConfidenceCandidates: 0, totalCandidates: 0, meanRetrievalSimilarity: 0, hybridMRR: 0, validatedCandidates: 0, totalValidated: 0, recentDeps: 0, kevCount: 0, semverCompatRate: 0 });
+  const totalScore = record?.totalScore ?? 0;
+  return {
+    totalScore, securityScore: record?.severityScore ?? 0, retrievalScore: record?.retrievalScore ?? 0,
+    validationScore: record?.validationScore ?? 0, maintainabilityScore: record?.maintainabilityScore ?? 0,
+    compatibilityScore: record?.compatibilityScore ?? record?.remediationScore ?? 0, weights, signals,
+    rationale: { formula: "", citations: [], ablationNotes: "" },
+    grade: totalScore >= 85 ? "A" : totalScore >= 70 ? "B" : totalScore >= 55 ? "C" : totalScore >= 40 ? "D" : "F",
+  };
+}
 
 // ─── Health Check ───────────────────────────────────────────────────────────
 
@@ -42,17 +132,11 @@ app.post("/api/scan", async (req, res) => {
       persist: true,
     });
 
-    res.json({
-      scanId: report.scanId,
-      repoUrl: report.repoUrl,
-      totalDependencies: report.totalDependencies,
-      totalVulnerabilities: report.totalVulnerabilities,
-      severityCounts: report.severityCounts,
-      results: report.results,
-    });
+    res.json(report);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Scan failed";
-    res.status(500).json({ error: message });
+    const statusCode = message.includes("No dependency manifest files found") ? 400 : 500;
+    res.status(statusCode).json({ error: message });
   }
 });
 
@@ -77,7 +161,7 @@ app.get("/api/scan/:id", async (req, res) => {
       return;
     }
 
-    res.json(scan);
+    res.json(toScanReport(scan));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch scan";
     res.status(500).json({ error: message });
@@ -126,7 +210,8 @@ app.post("/api/analyze", async (req, res) => {
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Analysis failed";
-    res.status(500).json({ error: message });
+    const statusCode = message.includes("No dependency manifest files found") ? 400 : 500;
+    res.status(statusCode).json({ error: message });
   }
 });
 
@@ -157,7 +242,26 @@ app.get("/api/analyze/:id", async (req, res) => {
       return;
     }
 
-    res.json(scan);
+    const chunksIndexed = await db.repositoryChunk.count({ where: { scanId } });
+    const profile = toProfile(scan.metadata);
+    const rsis = toRsis(scan.rsisScore);
+    res.json({
+      scanId: scan.id,
+      scan: toScanReport(scan),
+      metadata: profile,
+      repositoryProfile: profile,
+      knowledgeGraph: parseJson(scan.knowledgeGraph, { nodes: [], edges: [] }),
+      chunksIndexed,
+      similarRepos: scan.similarRepos.map((repo: any) => ({ ...repo, topics: parseJson(repo.topics, []) })),
+      remediations: scan.remediations.map((report: any) => ({
+        scanId: report.scanId, cveId: report.cveId, packageName: report.packageName, ecosystem: report.ecosystem,
+        candidates: parseJson(report.candidates, []), reasoningTrace: report.reasoningTrace,
+        contextChunks: [], validationPassed: report.validationPassed,
+      })),
+      rsis,
+      intelligenceSummary: parseJson(scan.intelligenceSummary, null),
+      aiEnabled: Boolean(process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch analysis";
     res.status(500).json({ error: message });
@@ -178,11 +282,7 @@ app.get("/api/analyze/:id/rsis", async (req, res) => {
       return;
     }
 
-    res.json({
-      ...rsis,
-      weights: JSON.parse(rsis.weights),
-      signals: JSON.parse(rsis.signals),
-    });
+    res.json(toRsis(rsis));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch RSIS score";
     res.status(500).json({ error: message });
@@ -199,10 +299,7 @@ app.get("/api/similar/:id", async (req, res) => {
       orderBy: { similarityScore: "desc" },
     });
 
-    res.json(similarRepos.map((r: any) => ({
-      ...r,
-      topics: r.topics ? JSON.parse(r.topics) : [],
-    })));
+    res.json(similarRepos.map((r: any) => ({ ...r, topics: parseJson(r.topics, []) })));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch similar repositories";
     res.status(500).json({ error: message });
@@ -301,7 +398,24 @@ app.get("/api/evaluate/:id", async (req, res) => {
       return;
     }
 
-    res.json(evalResult);
+    const metrics: EvalMetrics = {
+      retrieval: {
+        precisionAtK: evalResult.precisionAtK ?? 0,
+        recallAtK: evalResult.recallAtK ?? 0,
+        mrr: evalResult.mrr ?? 0,
+        ndcg: evalResult.ndcg ?? 0,
+        k: evalResult.kValue,
+      },
+      recommendation: {
+        top1Accuracy: evalResult.top1Accuracy ?? 0,
+        top3Accuracy: evalResult.top3Accuracy ?? 0,
+      },
+      validation: {
+        buildSuccessRate: evalResult.buildSuccessRate ?? 0,
+        vulnReductionRate: evalResult.vulnReductionRate ?? 0,
+      },
+    };
+    res.json({ scanId: evalResult.scanId, metrics, runAt: evalResult.runAt });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch evaluation results";
     res.status(500).json({ error: message });

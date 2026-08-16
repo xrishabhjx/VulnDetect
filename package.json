@@ -4,8 +4,10 @@
   "private": true,
   "description": "AI-Powered Vulnerability Detection and Mitigation System",
   "scripts": {
+    "dev": "node scripts/start-dev.js",
     "dev:api": "pnpm --filter @vuln-shield/api dev",
     "dev:web": "pnpm --filter @vuln-shield/web dev",
+    "start": "node scripts/start-dev.js",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",

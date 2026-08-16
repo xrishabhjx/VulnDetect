@@ -1,9 +1,14 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import dotenv from "dotenv";
 
-// Load environment variables
-dotenv.config({ path: "../../.env" });
-dotenv.config({ path: ".env" });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from the true workspace root.
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 let prisma: PrismaClient | null = null;
 

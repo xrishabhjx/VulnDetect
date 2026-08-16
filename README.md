@@ -1,413 +1,115 @@
-# VulnShield — AI-Powered Vulnerability Detection & Mitigation System
+# VulnShield
 
-> **An intelligent repository security platform that combines static dependency analysis, knowledge graph reasoning, and LLM-powered remediation planning into a unified 13-step pipeline.**
+VulnShield scans public GitHub repositories for dependency vulnerabilities and can run a fuller repository-security analysis with a knowledge graph, remediation candidates, and an RSIS score. It is a TypeScript pnpm workspace with a Next.js dashboard, Express API, PostgreSQL/pgvector database, and a CLI.
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?style=flat-square&logo=nodedotjs)](https://nodejs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql)](https://github.com/pgvector/pgvector)
-[![Groq](https://img.shields.io/badge/LLM-Groq%20LLaMA%203.3--70B-F55036?style=flat-square)](https://groq.com/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+## Quick start
 
----
+Prerequisites: Node.js 20 or newer (Node 22 recommended), pnpm, and Docker Desktop.
 
-## Overview
-
-VulnShield is a final-year engineering research project that addresses a core limitation of traditional vulnerability scanners: they detect vulnerabilities but provide no intelligent guidance on how to fix them in the context of a specific codebase.
-
-This system introduces the concept of a **Repository Security Intelligence Score (RSIS)** — a 5-dimensional quantitative metric that measures a repository's security posture across severity, retrieval confidence, validation, maintainability, and compatibility axes.
-
-The platform does not simply list CVEs. It reasons about them in the context of your repository's architecture, knowledge graph, and similar open-source repositories — then generates ranked, evidence-grounded remediation candidates using a large language model with a Groq → Gemini → heuristic fallback chain.
-
----
-
-## Key Capabilities
-
-| Capability | Implementation |
-|---|---|
-| **Multi-source vulnerability scanning** | OSV, NVD, GitHub Advisory, CISA KEV |
-| **Repository profile generation** | Detects framework, architecture, DB, ORM, auth, CI/CD, deployment — no LLM needed |
-| **Repository Knowledge Graph (RKG)** | Graph of File → Module → Dependency → Threat nodes with CVSS, KEV, Patch sub-graphs |
-| **Semantic chunking & hybrid retrieval** | BM25 + pgvector HNSW cosine similarity (RRF fusion) |
-| **Similar repository discovery** | GitHub Search API + health scoring + upgrade pattern evidence |
-| **LLM reasoning engine** | Groq LLaMA 3.3-70B → Gemini 1.5-flash → heuristic fallback |
-| **Context-aware prompting** | 7-section prompt: profile + graph + code evidence + threat intel + similar repo evidence |
-| **Candidate ranking** | 6-feature ML utility score (compatibility, security gain, evidence strength, validation, pattern alignment, dependency impact) |
-| **RSIS scoring** | 5-dimensional weighted score (security, retrieval, validation, maintainability, compatibility) |
-| **Interactive CLI** | Menu-driven terminal interface — no curl commands needed |
-| **REST API** | Express-based API server for programmatic access |
-| **Cross-project benchmark** | Automated RSIS comparison across curated vulnerable repositories |
-
----
-
-## System Architecture
-
-```
-Repository URL
-      │
-      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   13-STEP INTELLIGENCE PIPELINE                  │
-│                                                                   │
-│  Step 1   Vulnerability Scan (OSV + NVD + GitHub Advisory)       │
-│  Step 2   Repository Understanding → RepositoryProfile            │
-│  Step 3   Semantic Chunking (function/class boundary splitting)   │
-│  Step 4   Embedding Generation → pgvector HNSW columns           │
-│  Step 5   Knowledge Graph Construction (RKG Phase 1)             │
-│  Step 6   CISA KEV Threat Intel Enrichment                       │
-│  Step 7   Knowledge Graph Threat Enrichment (RKG Phase 2)        │
-│  Step 8   Similar Repository Discovery + Health Assessment        │
-│           ──────────────── per vulnerability ──────────────────  │
-│  Step 9   Graph Traversal → impacted files, modules, patches      │
-│           SimilarRepoEvidence build → upgrade patterns            │
-│           RepositoryContext construction (unified pre-LLM object) │
-│  Step 10  Reasoning Engine (Groq → Gemini → Heuristic fallback)  │
-│  Step 11  Validation + Multi-feature Candidate Ranking            │
-│  Step 12  RSIS 5-Dimension Score Computation                      │
-│  Step 13  Intelligence Summary + Projected RSIS                   │
-└─────────────────────────────────────────────────────────────────┘
-      │
-      ▼
-  AnalysisResult
-  ├── repositoryProfile   (architecture, stack, deployment signals)
-  ├── knowledgeGraph      (630+ nodes, 641+ edges for typical repo)
-  ├── remediations[]      (ranked candidates with reasoning chains)
-  ├── rsis                (5-dimension score with grade A–F)
-  └── intelligenceSummary (projected score, graph stats, stack desc)
-```
-
----
-
-## Repository Knowledge Graph (RKG)
-
-The RKG is the central data structure. It is built in two phases:
-
-**Phase 1 — Structural layer:**
-```
-[Repository] ──CONTAINS──▶ [File] ──CONTAINS──▶ [Module]
-                              │
-                         DEPENDS_ON
-                              │
-                              ▼
-                        [Dependency] ──IMPORTS──▶ [Package]
-```
-
-**Phase 2 — Security enrichment layer (threat intelligence integration):**
-```
-[Package] ──AFFECTS──▶ [Threat/CVE]
-                              ├──HAS_CVSS──▶  [CVSSNode]
-                              ├──IN_KEV──▶    [KEVNode]
-                              ├──FIXED_BY──▶  [PatchNode]
-                              └──REPLACED_BY──▶ [AlternativeNode]
-```
-
-The graph enables relationship-aware reasoning: the LLM is told exactly which files import a vulnerable package, which modules are at risk, and which versions are confirmed safe — derived from graph traversal, not hallucination.
-
----
-
-## RSIS — Repository Security Intelligence Score
-
-$$RSIS = w_1 \cdot S_{security} + w_2 \cdot S_{retrieval} + w_3 \cdot S_{validation} + w_4 \cdot S_{maintainability} + w_5 \cdot S_{compatibility}$$
-
-| Dimension | Default Weight | Measures |
-|---|---|---|
-| **Security** | 0.30 | CVSS severity, KEV exploitation, vulnerability density |
-| **Retrieval** | 0.20 | Code evidence quality (BM25 + pgvector RRF fusion score) |
-| **Validation** | 0.20 | Registry confirmation + OSV re-scan of proposed versions |
-| **Maintainability** | 0.15 | Dependency age, push recency, open issue burden |
-| **Compatibility** | 0.15 | SemVer upgrade safety (patch/minor/major delta) |
-
-Weights are configurable via `.env` and grounded in NIST SP 800-161 and ISO/IEC 25010.
-
----
-
-## Candidate Ranking — 6-Feature Utility Score
-
-Each remediation candidate is scored by the `CandidateRanker` using a weighted multi-criteria model:
-
-| Feature | Weight | Signal |
-|---|---|---|
-| Compatibility | 0.20 | SemVer diff (patch=1.0, minor=0.85, major=0.40) |
-| Security Gain | 0.30 | CVSS reduction + KEV resolution bonus (0.2) |
-| Dependency Impact | 0.12 | Inverse decay of transitive dependency chain length |
-| Validation | 0.18 | Registry existence + OSV re-scan outcome |
-| Pattern Alignment | 0.10 | Healthy similar-repo adoption signals |
-| Evidence Strength | 0.10 | OSV + NVD + GHSA + CISA KEV + similar repo corroboration |
-
----
-
-## Project Structure
-
-```
-.
-├── packages/
-│   ├── core/                          # Intelligence engine
-│   │   ├── prisma/
-│   │   │   └── schema.prisma          # Database schema (pgvector support)
-│   │   └── src/
-│   │       ├── analyzer.ts            # 13-step pipeline orchestrator
-│   │       ├── cli.ts                 # Interactive terminal interface
-│   │       ├── scanner.ts             # Multi-source vulnerability scanner
-│   │       ├── types.ts               # All shared TypeScript interfaces
-│   │       ├── intelligence/
-│   │       │   ├── repo-understander.ts   # Repository profile generation
-│   │       │   ├── knowledge-graph.ts     # RKG builder + traversal engine
-│   │       │   ├── reasoner.ts            # LLM reasoning (Groq→Gemini→fallback)
-│   │       │   ├── chunker.ts             # Semantic code chunking
-│   │       │   ├── embedder.ts            # Embedding (Gemini/TF-IDF)
-│   │       │   ├── retriever.ts           # Hybrid BM25 + pgvector retrieval
-│   │       │   ├── similar-repos.ts       # Similar repo discovery + evidence
-│   │       │   ├── candidate-ranker.ts    # 6-feature ML utility ranker
-│   │       │   ├── validator.ts           # Registry + OSV validation
-│   │       │   └── rsis-scorer.ts         # 5-dimension RSIS computation
-│   │       ├── vulndb/
-│   │       │   ├── osv-client.ts          # OSV vulnerability database
-│   │       │   ├── nvd-client.ts          # NIST NVD (CVSS data)
-│   │       │   ├── github-advisory-client.ts  # GitHub Security Advisories
-│   │       │   └── cisa-kev-client.ts     # CISA Known Exploited Vulnerabilities
-│   │       ├── benchmark/             # Cross-project evaluation suite
-│   │       └── evaluation/            # Retrieval quality metrics (MRR, nDCG)
-│   └── api/
-│       └── src/
-│           └── server.ts              # REST API (Express)
-├── docker-compose.yml                 # PostgreSQL + pgvector container
-└── .env.example                       # Environment variable template
-```
-
----
-
-## Technology Stack
-
-| Layer | Technology |
-|---|---|
-| **Runtime** | Node.js 22, TypeScript 5 |
-| **LLM Reasoning** | Groq LLaMA 3.3-70B Versatile |
-| **Embeddings** | Google Gemini `text-embedding-004` (768-dim) / Local TF-IDF fallback |
-| **Vector Database** | PostgreSQL + pgvector (HNSW index, cosine distance `<=>`) |
-| **Hybrid Retrieval** | BM25 + Dense ANN with Reciprocal Rank Fusion (RRF) |
-| **ORM** | Prisma |
-| **Package Manager** | pnpm (workspace monorepo) |
-| **Vulnerability Sources** | OSV, NIST NVD, GitHub Advisory API, CISA KEV |
-| **CLI** | chalk, ora |
-| **API** | Express.js |
-
----
-
-## Prerequisites
-
-- **Node.js** ≥ 22
-- **pnpm** ≥ 9 → `npm install -g pnpm`
-- **Docker Desktop** (for PostgreSQL + pgvector)
-- **API Keys** (see Configuration section)
-
----
-
-## Installation
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/xrishabhjx/VulnDetect.git
+```powershell
+git clone <repository-url>
 cd VulnDetect
-
-# 2. Install all dependencies (monorepo)
+corepack enable
 pnpm install
 
-# 3. Start PostgreSQL with pgvector
-docker-compose up -d
+Copy-Item .env.example .env
+# Prisma loads its environment from this package when its CLI is run.
+Copy-Item .env packages\core\.env
 
-# 4. Push database schema
-pnpm --filter @vulnshield/core db:push
-
-# 5. Enable pgvector extension (run once)
-docker exec -it vulnshield-db psql -U vulnshield -d vulnshield -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-# 6. Build all packages
-pnpm build
+docker compose up -d
+pnpm --filter @vuln-shield/core db:push
+pnpm dev
 ```
 
----
+Open the dashboard at http://localhost:3000. The API runs at http://localhost:3005; check it with http://localhost:3005/api/health.
+
+On macOS or Linux, use `cp .env.example .env` and `cp .env packages/core/.env` in place of the `Copy-Item` commands.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in the values:
+Start from `.env.example`. Never commit `.env` or `packages/core/.env`; replace any keys that were previously shared or exposed.
 
-```env
-# Required — GitHub Personal Access Token
-# Scope needed: public_repo (read repository contents)
-# Get from: https://github.com/settings/tokens
-GITHUB_TOKEN=github_pat_...
+| Variable | Purpose | Required |
+| --- | --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string; defaults match `docker-compose.yml`. | Yes |
+| `GITHUB_TOKEN` | Raises GitHub API limits and is recommended for repository analysis. | Recommended |
+| `NVD_API_KEY` | Enables richer NVD enrichment and higher NVD API limits. | Optional |
+| `GROQ_API_KEY` | Primary LLM provider for remediation reasoning. | Optional |
+| `GEMINI_API_KEY` | Fallback LLM provider and optional embeddings provider. | Optional |
+| `GROQ_MODEL` | Groq reasoning model. | Optional |
+| `GEMINI_MODEL` | Gemini reasoning model; default: `gemini-flash-latest`. | Optional |
+| `GEMINI_EMBED_MODEL` | Gemini embeddings model. | Optional |
+| `PORT` | API port; default: `3005`. | Optional |
+| `WEB_ORIGIN` | Comma-separated dashboard origins allowed by API CORS. | Optional |
 
-# Required for AI reasoning — Groq API Key
-# Get from: https://console.groq.com/keys
-# Note: Key must start with gsk_ (not Agsk_)
-GROQ_API_KEY=gsk_...
+The application uses evidence-based heuristic fallbacks if an AI provider is unavailable. An HTTP 429 from a provider does not invalidate a scan; restart after changing keys or model settings.
 
-# Optional — Gemini API Key (used for neural embeddings + reasoning fallback)
-# Get from: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY=AIza...
+## Running the app
 
-# Optional — NIST NVD API Key (increases rate limit from 5→50 req/30s)
-# Get from: https://nvd.nist.gov/developers/request-an-api-key
-NVD_API_KEY=...
+`pnpm dev` starts PostgreSQL (via Docker Compose), the API, and the dashboard. To run them separately:
 
-# Database (matches docker-compose.yml defaults)
-DATABASE_URL=postgresql://vulnshield:vulnshield123@localhost:5433/vulnshield
+```powershell
+pnpm --filter @vuln-shield/api dev
+pnpm --filter @vuln-shield/web dev
 ```
 
-> **Note:** Without `GEMINI_API_KEY`, the system uses a local TF-IDF fallback for embeddings. All reasoning, scanning, and graph features remain fully functional.
+Submit a public GitHub repository URL or `owner/repository` in the dashboard. Use a quick scan for dependency findings or full analysis for repository profiling, retrieval, graph construction, remediation ranking, and RSIS scoring.
 
----
+Full analysis is synchronous and may take several minutes for a large repository or slow external provider. Dashboard progress is estimated; the API does not yet stream pipeline status.
 
-## Usage
+## API and CLI
 
-### Interactive CLI (Recommended)
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | Health check |
+| `POST` | `/api/scan` | Dependency vulnerability scan |
+| `POST` | `/api/analyze` | Full repository-security analysis |
+| `GET` | `/api/scans` | Recent scan records |
+| `GET` | `/api/scan/:scanId` | Scan and its findings |
+| `GET` | `/api/analysis/:scanId` | Saved full-analysis output |
+| `GET` | `/api/rsis/:scanId` | RSIS score |
+| `GET` | `/api/similar/:scanId` | Similar-repository evidence |
 
-```bash
-cd packages/core
-pnpm scan
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:3005/api/scan `
+  -ContentType 'application/json' `
+  -Body '{"repoUrl":"OWASP/NodeGoat"}'
 ```
 
-```
-══════════════════════════════════════════════════════════════
-  🛡️  VulnShield — Repository Security Intelligence Platform
-══════════════════════════════════════════════════════════════
+Start the interactive CLI with:
 
-  1  Scan a repository                    ← check for vulnerabilities
-  2  Run full AI-powered analysis         ← remediation + knowledge graph + RSIS
-  3  Run benchmark suite                  ← RSIS before/after across 8 repos
-  4  Start API server                     ← REST endpoints at localhost:3001
-  5  Run test suite                       ← 40 unit tests
-  0  Exit
+```powershell
+pnpm --filter @vuln-shield/core scan
 ```
 
-Select **option 2** and enter any public GitHub repository (e.g. `OWASP/NodeGoat`, `juice-shop/juice-shop`).
+## Development checks
 
-### REST API
-
-```bash
-# Start the API server (option 4 in CLI, or directly:)
-cd packages/api && pnpm dev
-
-# Run full analysis
-curl -X POST http://localhost:3001/api/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"repoUrl": "OWASP/NodeGoat"}'
-
-# Quick scan only
-curl -X POST http://localhost:3001/api/scan \
-  -H "Content-Type: application/json" \
-  -d '{"repoUrl": "OWASP/NodeGoat"}'
+```powershell
+pnpm --filter @vuln-shield/core test
+pnpm --filter @vuln-shield/core build
+pnpm --filter @vuln-shield/api build
+pnpm --filter @vuln-shield/web build
 ```
 
----
+Some integration tests call external vulnerability services, so they need network access and can be affected by provider rate limits. Unit and type checks do not require API keys.
 
-## Sample Output
+## Troubleshooting
 
-### Repository Profile (Step 2 output)
-```
-  Repository      juice-shop/juice-shop
-  Language        TypeScript
-  Framework       express
-  Architecture    microservices
-  Type            api
-  Database        postgresql
-  ORM             sequelize
-  Auth            jwt
-  Deployment      docker
-  CI/CD           github-actions
-  Testing         cypress
-```
+| Symptom | Resolution |
+| --- | --- |
+| Prisma reports `DATABASE_URL` is missing | Ensure root `.env` exists, then copy it to `packages/core/.env` before running `db:push`. |
+| API cannot connect to PostgreSQL | Run `docker compose up -d`, confirm the container is healthy, and check `DATABASE_URL`. |
+| Dashboard cannot reach API | Confirm the API is on port `3005` and `packages/web/.env.local` uses `NEXT_PUBLIC_API_URL=http://localhost:3005`; restart Next.js afterward. |
+| Gemini reports an unavailable model | Set `GEMINI_MODEL=gemini-flash-latest`, then restart the API. Availability varies by account and region. |
+| Groq or Gemini returns 429 | Wait for quota reset or configure another provider; heuristic remediation remains available. |
 
-### Knowledge Graph (Step 5/7 output)
-```
-  Nodes:  630  (Files: 197  Modules: 0  Packages: 172  Threats: 83)
-  Edges:  641  (dependency chains, import relationships, threat intel edges)
-  ⚠️  3 CISA KEV nodes — actively exploited CVEs in this graph
+## Project layout
+
+```text
+packages/core  Scanner, analyzer, Prisma schema, CLI, intelligence pipeline
+packages/api   Express REST API
+packages/web   Next.js dashboard
+scripts        Local development launcher
 ```
 
-### RSIS Score
-```
-  Overall          ████████████░░░░░░░░░░░░ 49.8/100   Grade: D
-  →  CRITICAL RISK — immediate action required
-
-  Security         ░░░░░░░░░░░░   0.0   (3 CRITICAL, 14 HIGH CVEs)
-  Retrieval        ██░░░░░░░░░░   3.1   (TF-IDF mode, no Gemini key)
-  Validation       ████████████ 100.0   (all candidates registry-confirmed)
-  Maintainability  ███████████░  94.5   (dependencies are recent)
-  Compatibility    ████████████ 100.0   (all upgrades within same major)
-
-  Projected after remediation: 65.0/100 (+15 points)
-```
-
-### AI Remediation Recommendation
-```
-  [1] sequelize  •  CVE: GHSA-v8fg-2rw7-q452  •  Ecosystem: npm
-  Action: UPGRADE → v6.37.5   Risk: LOW
-  Confidence: ████████░░ 87%  (evidence-derived)
-
-  Chain of Reasoning:
-    1. Observed: SQL Injection via Oracle DB dialect in sequelize@6.37.3
-       Deduced: Any route using raw queries with Oracle dialect is exploitable
-    2. Observed: Graph traversal — 12 files import sequelize (models/, routes/)
-       Deduced: Attack surface spans entire data access layer
-    3. Observed: Similar repo helmetjs/helmet uses sequelize@6.37.5 (active)
-       Deduced: Patch is stable and production-proven
-
-  Evidence References:
-    • models/sequelize.js:1 — Primary ORM initialisation file
-    • routes/dataErasure.js:3 — Direct raw query usage
-```
-
----
-
-## Benchmark Suite
-
-Evaluates RSIS before and after remediation across 8 intentionally vulnerable repositories:
-
-```bash
-pnpm scan
-# Select option 3 → choose number of repos (1–8)
-```
-
-Output is saved as `benchmark-results.md` and `benchmark-results.json`.
-
-**Curated benchmark repos include:** OWASP/NodeGoat, juice-shop/juice-shop, OWASP/WebGoat, WebGoat/WebGoat-Legacy, OWASP/DVWA, and more.
-
----
-
-## Evaluation Metrics
-
-The system is evaluated across three axes:
-
-| Metric | Description | Target |
-|---|---|---|
-| **Retrieval Precision@5** | Top-5 code chunk relevance | ≥ 0.70 |
-| **MRR (Mean Reciprocal Rank)** | Position of first relevant chunk | ≥ 0.60 |
-| **Top-1 Recommendation Accuracy** | Correct fix in rank-1 position | ≥ 0.65 |
-| **Validation Pass Rate** | Proposed versions pass OSV re-scan | ≥ 0.80 |
-| **RSIS Improvement** | Score delta after applying top recommendations | ≥ +10 pts |
-
----
-
-## Research Contributions
-
-1. **RepositoryProfile** — A structured, LLM-free architectural fingerprint of any GitHub repository derived from file tree, manifest, and README signals.
-
-2. **Repository Knowledge Graph (RKG)** — A two-phase graph (structural + security enrichment) that enables relationship-aware vulnerability reasoning rather than flat CVE listing.
-
-3. **RepositoryContext** — A unified pre-LLM context object that aggregates all pipeline stage outputs, ensuring the reasoning engine receives complete, structured intelligence.
-
-4. **RSIS** — A 5-dimensional, literature-grounded security score that provides a quantitative, reproducible measure of repository security posture.
-
-5. **Provider Fallback Chain** — Groq → Gemini → evidence-based heuristic ensures the pipeline never silently produces empty output regardless of API availability.
-
----
-
-## Author
-
-**Rishabh Jain**  
-
----
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+For dashboard-specific notes, see [packages/web/README.md](packages/web/README.md). The visual design reference is [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).

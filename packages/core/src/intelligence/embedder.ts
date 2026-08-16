@@ -3,7 +3,10 @@ import { getDB } from "../db.js";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
-const GEMINI_EMBED_MODEL  = "text-embedding-004";
+const GEMINI_EMBED_MODELS = [
+  process.env.GEMINI_EMBED_MODEL?.trim() || "gemini-embedding-001",
+  "text-embedding-004",
+];
 const EMBEDDING_DIMENSIONS = 768;
 const BATCH_SIZE           = 100;
 
@@ -124,6 +127,7 @@ interface GeminiBatchResponse   { embeddings: Array<{ values: number[] }> }
 export class Embedder {
   private readonly geminiKey: string | null;
   private provider: "gemini" | "local";
+  private quotaExceeded = false;
 
   /** True when a neural embedding API is available */
   get aiEnabled(): boolean {
@@ -142,7 +146,7 @@ export class Embedder {
     this.provider  = resolveProvider();
 
     if (this.provider === "gemini") {
-      console.log("[Embedder] Using Gemini text-embedding-004 (neural, 768-dim)");
+      console.log("[Embedder] Using Gemini embedding model (neural, 768-dim)");
     } else {
       const reason = process.env.GROQ_API_KEY?.length
         ? "Groq does not provide an embeddings API — using local TF-IDF fallback"
@@ -155,18 +159,22 @@ export class Embedder {
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   async embed(text: string): Promise<number[]> {
-    if (this.provider === "gemini") {
+    if (this.provider === "gemini" && !this.quotaExceeded) {
       const result = await this.geminiEmbed(text, "RETRIEVAL_DOCUMENT");
       if (result) return result;
       console.warn("[Embedder] Gemini embed failed — falling back to local TF-IDF");
+      this.provider = "local";
+      this.quotaExceeded = true;
     }
     return localEmbed(text);
   }
 
   async embedQuery(query: string): Promise<number[]> {
-    if (this.provider === "gemini") {
+    if (this.provider === "gemini" && !this.quotaExceeded) {
       const result = await this.geminiEmbed(query, "RETRIEVAL_QUERY");
       if (result) return result;
+      this.provider = "local";
+      this.quotaExceeded = true;
     }
     return localEmbed(query);
   }
@@ -174,10 +182,10 @@ export class Embedder {
   async embedBatch(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
 
-    if (this.provider === "gemini") {
+    if (this.provider === "gemini" && !this.quotaExceeded) {
       const results = await this.geminiBatchEmbed(texts);
       // Fill any nulls with local fallback
-      return results.map((r, i) => r ?? localEmbed(texts[i]!));
+      return results.map((r, i) => r ?? localEmbed(texts[i!]));
     }
 
     // Local: synchronous, no rate limits
@@ -246,69 +254,103 @@ export class Embedder {
   // ─── Gemini implementation ───────────────────────────────────────────────────
 
   private async geminiEmbed(text: string, taskType: string): Promise<number[] | null> {
-    if (this.provider === "local") return null;
+    const models = Array.from(new Set(GEMINI_EMBED_MODELS.filter(Boolean)));
 
-    const url  = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_EMBED_MODEL}:embedContent?key=${this.geminiKey}`;
-    const body: GeminiEmbedRequest = {
-      model:    `models/${GEMINI_EMBED_MODEL}`,
-      content:  { parts: [{ text: text.substring(0, 8000) }] },
-      taskType,
-    };
+    for (const modelName of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:embedContent?key=${this.geminiKey}`;
+      const body: GeminiEmbedRequest = {
+        model: `models/${modelName}`,
+        content: { parts: [{ text: text.substring(0, 8000) }] },
+        taskType,
+      };
 
-    try {
-      const res = await fetch(url, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
-        signal:  AbortSignal.timeout(15_000),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        console.warn(`[Embedder] Gemini embed HTTP ${res.status}: ${err.substring(0, 80)}`);
-        console.warn("[Embedder] Switching provider to local TF-IDF fallback.");
-        this.provider = "local";
-        return null;
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          const isNotFound = res.status === 404 || err.toLowerCase().includes("not found") || err.toLowerCase().includes("is not");
+        const isQuotaExceeded = res.status === 429 || err.toLowerCase().includes("quota") || err.toLowerCase().includes("exceeded your current quota");
+        console.warn(`[Embedder] Gemini embed HTTP ${res.status} for ${modelName}: ${err.substring(0, 80)}`);
+        if (isQuotaExceeded) {
+          this.provider = "local";
+          this.quotaExceeded = true;
+          console.warn("[Embedder] Gemini quota exceeded — falling back to local TF-IDF for this run.");
+          return null;
+        }
+          return null;
+        }
+
+        const data = (await res.json()) as GeminiEmbedResponse;
+        return data.embedding?.values ?? null;
+      } catch (err) {
+        console.warn(`[Embedder] Gemini embed network error for ${modelName}:`, err);
+        if (modelName === models[models.length - 1]) {
+          return null;
+        }
       }
-      const data = (await res.json()) as GeminiEmbedResponse;
-      return data.embedding?.values ?? null;
-    } catch (err) {
-      console.warn("[Embedder] Gemini embed network error:", err);
-      this.provider = "local";
-      return null;
     }
+
+    return null;
   }
 
   private async geminiBatchEmbed(texts: string[]): Promise<Array<number[] | null>> {
-    if (this.provider === "local") return texts.map(() => null);
+    const models = Array.from(new Set(GEMINI_EMBED_MODELS.filter(Boolean)));
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_EMBED_MODEL}:batchEmbedContents?key=${this.geminiKey}`;
-    const requests = texts.map(text => ({
-      model:    `models/${GEMINI_EMBED_MODEL}`,
-      content:  { parts: [{ text: text.substring(0, 8000) }] },
-      taskType: "RETRIEVAL_DOCUMENT",
-    }));
+    for (const modelName of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:batchEmbedContents?key=${this.geminiKey}`;
+      const requests = texts.map((text) => ({
+        model: `models/${modelName}`,
+        content: { parts: [{ text: text.substring(0, 8000) }] },
+        taskType: "RETRIEVAL_DOCUMENT",
+      }));
 
-    try {
-      const res = await fetch(url, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ requests }),
-        signal:  AbortSignal.timeout(30_000),
-      });
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requests }),
+          signal: AbortSignal.timeout(30_000),
+        });
 
-      if (!res.ok) {
-        console.warn(`[Embedder] Gemini batch embed HTTP ${res.status} — switching to local TF-IDF fallback`);
-        this.provider = "local";
-        return texts.map(() => null);
+        if (!res.ok) {
+          const errText = await res.text();
+          const isNotFound = res.status === 404 || errText.toLowerCase().includes("not found") || errText.toLowerCase().includes("is not");
+          const isQuotaExceeded = res.status === 429 || errText.toLowerCase().includes("quota") || errText.toLowerCase().includes("exceeded your current quota");
+          console.warn(`[Embedder] Gemini batch embed HTTP ${res.status} for ${modelName} — ${errText.substring(0, 80)}`);
+          if (isQuotaExceeded) {
+            this.provider = "local";
+            this.quotaExceeded = true;
+            console.warn("[Embedder] Gemini quota exceeded — falling back to local TF-IDF for this run.");
+            return texts.map(() => null);
+          }
+          if (isNotFound && modelName !== models[models.length - 1]) {
+            continue;
+          }
+          const results: Array<number[] | null> = [];
+          for (const text of texts) {
+            results.push(await this.geminiEmbed(text, "RETRIEVAL_DOCUMENT"));
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          return results;
+        }
+
+        const data = (await res.json()) as GeminiBatchResponse;
+        return data.embeddings?.map((e) => e.values ?? null) ?? texts.map(() => null);
+      } catch (err) {
+        console.warn(`[Embedder] Gemini batch embed network error for ${modelName}:`, err);
+        if (modelName === models[models.length - 1]) {
+          return texts.map(() => null);
+        }
       }
-
-      const data = (await res.json()) as GeminiBatchResponse;
-      return data.embeddings?.map(e => e.values ?? null) ?? texts.map(() => null);
-    } catch (err) {
-      console.warn("[Embedder] Gemini batch embed network error:", err);
-      this.provider = "local";
-      return texts.map(() => null);
     }
+
+    return texts.map(() => null);
   }
 
   private buildChunkText(chunk: RepoChunk): string {
