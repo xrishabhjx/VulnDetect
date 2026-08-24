@@ -20,8 +20,8 @@ import type {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load env from the actual workspace root, not from the process CWD.
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+// Load env from the actual workspace root and force refresh any stale process-level values.
+dotenv.config({ path: path.resolve(__dirname, "../../../.env"), override: true });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3005;
@@ -103,7 +103,18 @@ function toRsis(record: any): RSISScore {
     totalScore, securityScore: record?.severityScore ?? 0, retrievalScore: record?.retrievalScore ?? 0,
     validationScore: record?.validationScore ?? 0, maintainabilityScore: record?.maintainabilityScore ?? 0,
     compatibilityScore: record?.compatibilityScore ?? record?.remediationScore ?? 0, weights, signals,
-    rationale: { formula: "", citations: [], ablationNotes: "" },
+    // Rationale is deterministic for the current RSIS model. Older persisted
+    // rows predate a rationale column, so reconstruct it rather than showing a
+    // blank formula in the dashboard.
+    rationale: {
+      formula: "RSIS = 0.30(Security) + 0.20(Retrieval) + 0.20(Validation) + 0.15(Maintainability) + 0.15(Compatibility)",
+      citations: [
+        "NIST SP 800-161 Rev. 1",
+        "CVSS v3.1 Specification",
+        "ISO/IEC 25010",
+      ],
+      ablationNotes: "Weights are configurable through the RSIS_WEIGHT_* environment variables.",
+    },
     grade: totalScore >= 85 ? "A" : totalScore >= 70 ? "B" : totalScore >= 55 ? "C" : totalScore >= 40 ? "D" : "F",
   };
 }
@@ -195,6 +206,19 @@ app.post("/api/analyze", async (req, res) => {
     return;
   }
 
+  const wantsEventStream = req.headers.accept?.includes("text/event-stream");
+  const sendEvent = (event: string, data: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  if (wantsEventStream) {
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+  }
+
   try {
     const analyzer = new IntelligenceAnalyzer();
     const result = await analyzer.analyze(repoUrl, {
@@ -203,15 +227,28 @@ app.post("/api/analyze", async (req, res) => {
       skipEmbedding: skipEmbedding || false,
       skipSimilarRepos: skipSimilarRepos || false,
       skipReasoning: skipReasoning || false,
-      maxRemediations: maxRemediations || 10,
+      maxRemediations: Math.min(Math.max(Number(maxRemediations) || 3, 1), Number(process.env.MAX_REMEDIATIONS ?? 3)),
       persist: true,
+      onProgress: wantsEventStream
+        ? (event) => sendEvent("progress", event)
+        : undefined,
     });
 
-    res.json(result);
+    if (wantsEventStream) {
+      sendEvent("result", result);
+      res.end();
+    } else {
+      res.json(result);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Analysis failed";
     const statusCode = message.includes("No dependency manifest files found") ? 400 : 500;
-    res.status(statusCode).json({ error: message });
+    if (wantsEventStream) {
+      sendEvent("error", { error: message, statusCode });
+      res.end();
+    } else {
+      res.status(statusCode).json({ error: message });
+    }
   }
 });
 

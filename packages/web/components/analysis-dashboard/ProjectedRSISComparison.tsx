@@ -15,6 +15,7 @@ export function ProjectedRSISComparison({
 }: ProjectedRSISComparisonProps) {
   const delta = projectedScore - currentScore;
   const deltaFormatted = (delta >= 0 ? "+" : "") + delta.toFixed(1);
+  const scoreFormatted = (score: number) => score.toFixed(1);
 
   const getGrade = (score: number) => {
     if (score >= 85) return "A";
@@ -48,7 +49,7 @@ export function ProjectedRSISComparison({
         <div className="p-6 rounded-lg bg-surface/50 border border-border text-center space-y-2">
           <span className="text-xs font-mono text-secondary uppercase">Current Score</span>
           <div className="text-4xl font-mono font-bold text-primary">
-            {Math.round(currentScore)}
+            {scoreFormatted(currentScore)}
           </div>
           <div className={`text-sm font-display font-semibold ${getGradeColor(currentScore)}`}>
             Grade {getGrade(currentScore)}
@@ -70,7 +71,7 @@ export function ProjectedRSISComparison({
         <div className="p-6 rounded-lg bg-surface border border-accent/40 text-center space-y-2">
           <span className="text-xs font-mono text-accent uppercase font-semibold">Projected Score</span>
           <div className="text-4xl font-mono font-bold text-accent">
-            {Math.round(projectedScore)}
+            {scoreFormatted(projectedScore)}
           </div>
           <div className={`text-sm font-display font-semibold ${getGradeColor(projectedScore)}`}>
             Grade {getGrade(projectedScore)}

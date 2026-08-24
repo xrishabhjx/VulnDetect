@@ -6,9 +6,8 @@ import dotenv from "dotenv";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables from the true workspace root.
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+// Load environment variables from the true workspace root and prefer the latest values.
+dotenv.config({ path: path.resolve(__dirname, "../../../.env"), override: true });
 
 let prisma: PrismaClient | null = null;
 

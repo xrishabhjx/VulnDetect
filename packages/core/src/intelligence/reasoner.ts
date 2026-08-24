@@ -16,6 +16,18 @@ import { ContextRetriever } from "./retriever.js";
 
 const GROQ_DEFAULT_MODEL   = "llama-3.3-70b-versatile";
 const GEMINI_DEFAULT_MODEL = "gemini-flash-latest";
+const MAX_PROMPT_CHARS = clampConfig("LLM_MAX_PROMPT_CHARS", 5_500, 2_000, 20_000);
+const MAX_OUTPUT_TOKENS = clampConfig("LLM_MAX_OUTPUT_TOKENS", 1_000, 256, 2_000);
+
+function clampConfig(key: string, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseInt(process.env[key] ?? "", 10);
+  return Number.isFinite(parsed) ? Math.min(Math.max(parsed, min), max) : fallback;
+}
+
+function fitPrompt(prompt: string): string {
+  if (prompt.length <= MAX_PROMPT_CHARS) return prompt;
+  return `${prompt.slice(0, MAX_PROMPT_CHARS)}\n\n[Context truncated to stay within the configured provider token budget.]`;
+}
 
 interface LLMProvider {
   name: string;
@@ -171,7 +183,9 @@ const OUTPUT_SCHEMA = `Return a JSON object with this exact structure:
     }
   ],
   "reasoningTrace": "overall analysis — what the codebase does, why this vuln matters here, what evidence supports the recommendation"
-}`;
+}
+
+Return exactly ONE candidate, at most two chain-of-reasoning steps, and at most two evidence items. Keep every string concise.`;
 
 // ─── Context-Aware Reasoning Engine ──────────────────────────────────────────
 
@@ -190,6 +204,7 @@ const OUTPUT_SCHEMA = `Return a JSON object with this exact structure:
 export class ContextReasoner {
   private providers: LLMProvider[];
   private retriever: ContextRetriever;
+  private disabledProviders = new Set<string>();
 
   get aiEnabled(): boolean {
     return this.providers.length > 0;
@@ -266,10 +281,13 @@ export class ContextReasoner {
       return this.heuristicFallback(scanId, vulnerability, packageName, version, ecosystem, fullCtx);
     }
 
-    const userPrompt = buildContextAwarePrompt(vulnerability, packageName, version, ecosystem, fullCtx);
+    const userPrompt = fitPrompt(
+      buildContextAwarePrompt(vulnerability, packageName, version, ecosystem, fullCtx)
+    );
 
     // Try each provider in order — fallback to next on failure
     for (const provider of this.providers) {
+      if (this.disabledProviders.has(provider.name)) continue;
       try {
         const candidates = await this.callProvider(provider, userPrompt, vulnerability, fullCtx.retrievedChunks);
         const providerTrace = `Context-Aware Reasoning via ${provider.name} — ${fullCtx.retrievedChunks.length} code chunks, ${fullCtx.graphPaths.length} graph paths, ${fullCtx.similarRepoEvidence.length} similar repo evidence items`;
@@ -286,7 +304,13 @@ export class ContextReasoner {
           validationPassed: false,
         };
       } catch (err) {
-        console.warn(`[Reasoner] ${provider.name} failed:`, (err as Error).message, "— trying next provider");
+        const message = (err as Error).message;
+        if (this.shouldDisableProvider(message)) {
+          this.disabledProviders.add(provider.name);
+          console.warn(`[Reasoner] ${provider.name} is temporarily unavailable (${message}). Disabled for the rest of this analysis — trying next provider`);
+        } else {
+          console.warn(`[Reasoner] ${provider.name} failed:`, message, "— trying next provider");
+        }
       }
     }
 
@@ -325,7 +349,7 @@ export class ContextReasoner {
       body: JSON.stringify({
         model: provider.modelName,
         temperature: 0.2,
-        max_tokens: 3000,
+        max_tokens: MAX_OUTPUT_TOKENS,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -375,7 +399,7 @@ export class ContextReasoner {
         }],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 3000,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
           responseMimeType: "application/json",
         },
       }),
@@ -388,12 +412,22 @@ export class ContextReasoner {
     }
 
     const data = (await response.json()) as {
-      candidates?: Array<{ content: { parts: Array<{ text: string }> } }>;
+      candidates?: Array<{ content: { parts: Array<{ text: string }> }; finishReason?: string }>;
     };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
     if (!text) throw new Error("Gemini returned empty content");
 
-    const parsed = JSON.parse(text) as { candidates: RemediationCandidate[] };
+    if (candidate?.finishReason === "MAX_TOKENS") {
+      throw new Error(`Gemini response reached the ${MAX_OUTPUT_TOKENS}-token output limit`);
+    }
+
+    let parsed: { candidates: RemediationCandidate[] };
+    try {
+      parsed = JSON.parse(text) as { candidates: RemediationCandidate[] };
+    } catch {
+      throw new Error("Gemini returned incomplete or invalid JSON");
+    }
     return (parsed.candidates ?? []).map(c => this.enrichCandidateEvidence(c, chunks));
   }
 
@@ -424,6 +458,10 @@ export class ContextReasoner {
         }));
 
     return { ...candidate, chainOfReasoning, evidence };
+  }
+
+  private shouldDisableProvider(message: string): boolean {
+    return /HTTP (429|503)|rate limit|quota|high demand|UNAVAILABLE/i.test(message);
   }
 
   // ─── Heuristic fallback ──────────────────────────────────────────────────

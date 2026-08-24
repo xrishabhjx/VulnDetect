@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import apiClient from "@/lib/api-client";
+import { useCallback, useState } from "react";
+import apiClient, { type AnalysisProgressEvent } from "@/lib/api-client";
 import type { AnalysisResult, ScanReport } from "@/lib/types";
 
 type ScanStatus = "idle" | "loading" | "success" | "error";
@@ -69,20 +69,6 @@ export function useAnalysis() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
-  const stages: AnalysisStage[] = [
-    "dependency-scanning",
-    "repository-understanding",
-    "chunking",
-    "embedding",
-    "building-graph",
-    "enriching-threats",
-    "finding-similar-repos",
-    "reasoning",
-    "scoring",
-    "finalizing",
-    "complete",
-  ];
-
   const stageLabels: Record<AnalysisStage, string> = {
     "idle": "Ready",
     "dependency-scanning": "Vulnerability scanning & dependency parsing",
@@ -98,15 +84,6 @@ export function useAnalysis() {
     "complete": "Analysis complete",
     "error": "Error occurred",
   };
-
-  // Simulate progress through stages
-  useEffect(() => {
-    if (stage === "idle" || stage === "complete" || stage === "error") return;
-
-    const stageIndex = stages.indexOf(stage);
-    const calculatedProgress = Math.round(((stageIndex + 1) / stages.length) * 100);
-    setProgress(calculatedProgress);
-  }, [stage, stages]);
 
   const startAnalysis = useCallback(
     async (
@@ -125,26 +102,10 @@ export function useAnalysis() {
       setProgress(0);
 
       try {
-        const stageSequence: AnalysisStage[] = [
-          "dependency-scanning",
-          "repository-understanding",
-          "chunking",
-          "embedding",
-          "building-graph",
-          "enriching-threats",
-          "finding-similar-repos",
-          "reasoning",
-          "scoring",
-          "finalizing",
-          "complete",
-        ];
-
-        for (const nextStage of stageSequence.slice(0, -1)) {
-          setStage(nextStage);
-          await new Promise((resolve) => setTimeout(resolve, 700 + Math.random() * 350));
-        }
-
-        const result = await apiClient.startFullAnalysis(repoUrl, options);
+        const result = await apiClient.streamFullAnalysis(repoUrl, options, (event: AnalysisProgressEvent) => {
+          setStage(event.stage as AnalysisStage);
+          setProgress(event.progress);
+        });
         setAnalysis(result);
         setStage("complete");
         setProgress(100);

@@ -16,8 +16,7 @@ import { disconnectDB } from "./db.js";
 import { writeFileSync } from "node:fs";
 import type { ScanReport, Severity } from "./types.js";
 
-dotenv.config({ path: "../../.env" });
-dotenv.config({ path: ".env" });
+dotenv.config({ path: "../../.env", override: true });
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

@@ -26,23 +26,25 @@ interface PipelineProgressProps {
   stageLabel: string;
 }
 
-export function PipelineProgress({ progress, stageLabel }: PipelineProgressProps) {
+export function PipelineProgress({ stage, progress, stageLabel }: PipelineProgressProps) {
+  // These identifiers are emitted by the backend analyzer over SSE. They are
+  // deliberately not time-based estimates, so the web and terminal monitors
+  // describe the same work.
   const stagesList = [
-    "Fetching repository & metadata",
-    "Parsing manifest files",
-    "Querying OSV / NVD / Advisory DBs",
-    "Building Repository Knowledge Graph",
-    "Generating semantic embeddings",
-    "Retrieving context & hybrid search",
-    "Finding similar GitHub repos",
-    "LLM reasoning chain generation",
-    "Candidate validation",
-    "Utility feature ranking",
-    "Computing 5-dimension RSIS score",
-    "Persisting analysis report",
+    { key: "dependency-scanning", label: "Vulnerability scanning & dependency parsing" },
+    { key: "repository-understanding", label: "Repository understanding & profile generation" },
+    { key: "chunking", label: "Semantic chunking" },
+    { key: "embedding", label: "Embedding generation & storage" },
+    { key: "building-graph", label: "Repository knowledge graph construction" },
+    { key: "enriching-threats", label: "Threat-intelligence enrichment" },
+    { key: "finding-similar-repos", label: "Similar-repository discovery" },
+    { key: "reasoning", label: "Remediation reasoning, validation & ranking" },
+    { key: "scoring", label: "RSIS scoring" },
+    { key: "finalizing", label: "Intelligence summary & persistence" },
   ];
 
-  const currentIdx = Math.floor((progress / 100) * stagesList.length);
+  const activeIndex = stagesList.findIndex((item) => item.key === stage);
+  const currentIdx = stage === "complete" ? stagesList.length : Math.max(activeIndex, 0);
 
   return (
     <div className="space-y-6">
@@ -50,7 +52,7 @@ export function PipelineProgress({ progress, stageLabel }: PipelineProgressProps
       <div className="flex items-center justify-between">
         <div>
           <span className="text-xs font-mono uppercase tracking-wider text-secondary">
-            13-Step Analysis Pipeline
+            Live Analysis Pipeline
           </span>
           <h3 className="text-lg font-display font-semibold text-primary">
             {stageLabel}
@@ -73,7 +75,7 @@ export function PipelineProgress({ progress, stageLabel }: PipelineProgressProps
       <div className="relative pl-6 space-y-3 pt-2">
         <div className="absolute left-[7px] top-2 bottom-2 w-[1px] bg-border" />
 
-        {stagesList.map((stepName, idx) => {
+        {stagesList.map((step, idx) => {
           const isDone = idx < currentIdx;
           const isCurrent = idx === currentIdx;
 
@@ -102,7 +104,7 @@ export function PipelineProgress({ progress, stageLabel }: PipelineProgressProps
                     : "text-secondary/60"
                 }`}
               >
-                Step {idx + 1}: {stepName}
+                {step.label}
               </span>
 
               <span className="text-[11px]">

@@ -93,7 +93,7 @@ export function RSISScoreCard({ rsis }: RSISScoreCardProps) {
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pt-6">
               <span className="text-4xl font-mono font-bold text-primary">
-                {Math.round(rsis.totalScore)}
+                {rsis.totalScore.toFixed(1)}
               </span>
               <span className="text-xs font-mono text-secondary">/ 100</span>
             </div>
@@ -124,7 +124,7 @@ export function RSISScoreCard({ rsis }: RSISScoreCardProps) {
                   </span>
                   <div className="font-mono space-x-2">
                     <span className="text-primary font-semibold">
-                      {Math.round(dim.value)}
+                      {dim.value.toFixed(1)}
                     </span>
                     <span className="text-secondary">
                       ({Math.round(dim.weight * 100)}%)

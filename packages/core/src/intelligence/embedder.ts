@@ -24,7 +24,10 @@ const BATCH_SIZE           = 100;
  *       embeddings and still use Groq for the reasoning / LLM steps.
  */
 function resolveProvider(): "gemini" | "local" {
-  if (process.env.GEMINI_API_KEY?.length) return "gemini";
+  if (
+    process.env.GEMINI_API_KEY?.length &&
+    process.env.GEMINI_EMBEDDINGS_ENABLED?.toLowerCase() !== "false"
+  ) return "gemini";
   return "local";
 }
 
@@ -107,6 +110,8 @@ interface GeminiEmbedRequest {
   model: string;
   content: { parts: Array<{ text: string }> };
   taskType?: string;
+  /** Request the database-compatible vector length from Gemini embedding models. */
+  outputDimensionality?: number;
 }
 interface GeminiEmbedResponse   { embedding: { values: number[] } }
 interface GeminiBatchResponse   { embeddings: Array<{ values: number[] }> }
@@ -128,6 +133,7 @@ export class Embedder {
   private readonly geminiKey: string | null;
   private provider: "gemini" | "local";
   private quotaExceeded = false;
+  private dimensionMismatch = false;
 
   /** True when a neural embedding API is available */
   get aiEnabled(): boolean {
@@ -146,9 +152,11 @@ export class Embedder {
     this.provider  = resolveProvider();
 
     if (this.provider === "gemini") {
-      console.log("[Embedder] Using Gemini embedding model (neural, 768-dim)");
+      console.log("[Embedder] Using Gemini embedding model (requesting neural 768-dim vectors)");
     } else {
-      const reason = process.env.GROQ_API_KEY?.length
+      const reason = process.env.GEMINI_EMBEDDINGS_ENABLED?.toLowerCase() === "false"
+        ? "Gemini embeddings disabled by configuration — using local TF-IDF fallback"
+        : process.env.GROQ_API_KEY?.length
         ? "Groq does not provide an embeddings API — using local TF-IDF fallback"
         : "No GEMINI_API_KEY set — using local TF-IDF fallback";
       console.log(`[Embedder] ${reason}`);
@@ -255,6 +263,7 @@ export class Embedder {
 
   private async geminiEmbed(text: string, taskType: string): Promise<number[] | null> {
     const models = Array.from(new Set(GEMINI_EMBED_MODELS.filter(Boolean)));
+    console.log("[Embedder] Gemini runtime key suffix:", process.env.GEMINI_API_KEY?.slice(-6) ?? "MISSING");
 
     for (const modelName of models) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:embedContent?key=${this.geminiKey}`;
@@ -262,6 +271,7 @@ export class Embedder {
         model: `models/${modelName}`,
         content: { parts: [{ text: text.substring(0, 8000) }] },
         taskType,
+        outputDimensionality: EMBEDDING_DIMENSIONS,
       };
 
       try {
@@ -287,7 +297,7 @@ export class Embedder {
         }
 
         const data = (await res.json()) as GeminiEmbedResponse;
-        return data.embedding?.values ?? null;
+        return this.requireCompatibleDimensions(data.embedding?.values ?? null, modelName);
       } catch (err) {
         console.warn(`[Embedder] Gemini embed network error for ${modelName}:`, err);
         if (modelName === models[models.length - 1]) {
@@ -308,6 +318,7 @@ export class Embedder {
         model: `models/${modelName}`,
         content: { parts: [{ text: text.substring(0, 8000) }] },
         taskType: "RETRIEVAL_DOCUMENT",
+        outputDimensionality: EMBEDDING_DIMENSIONS,
       }));
 
       try {
@@ -341,7 +352,9 @@ export class Embedder {
         }
 
         const data = (await res.json()) as GeminiBatchResponse;
-        return data.embeddings?.map((e) => e.values ?? null) ?? texts.map(() => null);
+        return data.embeddings?.map((e) =>
+          this.requireCompatibleDimensions(e.values ?? null, modelName)
+        ) ?? texts.map(() => null);
       } catch (err) {
         console.warn(`[Embedder] Gemini batch embed network error for ${modelName}:`, err);
         if (modelName === models[models.length - 1]) {
@@ -355,5 +368,30 @@ export class Embedder {
 
   private buildChunkText(chunk: RepoChunk): string {
     return `File: ${chunk.filePath}\nType: ${chunk.chunkType}\nLanguage: ${chunk.language ?? "unknown"}\n\n${chunk.content}`;
+  }
+
+  /**
+   * pgvector is declared as vector(768). Gemini embedding-001 may return its
+   * native 3072 dimensions unless outputDimensionality is honored, so never
+   * pass an incompatible vector to PostgreSQL. Falling back once avoids one
+   * database error per source chunk when a provider/model ignores the option.
+   */
+  private requireCompatibleDimensions(
+    embedding: number[] | null,
+    modelName: string
+  ): number[] | null {
+    if (!embedding) return null;
+    if (embedding.length === EMBEDDING_DIMENSIONS) return embedding;
+
+    if (!this.dimensionMismatch) {
+      console.warn(
+        `[Embedder] ${modelName} returned ${embedding.length} dimensions; ` +
+        `expected ${EMBEDDING_DIMENSIONS}. Falling back to local TF-IDF for this run.`
+      );
+    }
+    this.dimensionMismatch = true;
+    this.provider = "local";
+    this.quotaExceeded = true;
+    return null;
   }
 }
