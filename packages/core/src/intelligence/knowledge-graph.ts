@@ -315,8 +315,7 @@ export class RepoKnowledgeGraphBuilder {
     // Threat info from enriched graph
     const threatNodeId = Array.from(this.nodes.keys()).find(
       (id) => id.startsWith("threat:") && (
-        (cveId && id.includes(cveId)) ||
-        this.edges.some((e) => e.source === pkgId && e.target === id && e.relationship === "AFFECTS")
+        (cveId && id.includes(cveId))
       )
     );
 

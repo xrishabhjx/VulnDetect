@@ -99,7 +99,12 @@ export class ContextRetriever {
     } catch (err) {
       // Fallback if vector column not yet populated (e.g. old chunks indexed before migration)
       console.warn("[Retriever] pgvector query failed — falling back to JSON cosine:", (err as Error).message);
-      return this.retrieveFallback(scanId, query, queryVec, k, filter);
+      try {
+        return await this.retrieveFallback(scanId, query, queryVec, k, filter);
+      } catch (fallbackError) {
+        console.warn("[Retriever] JSON retrieval unavailable:", (fallbackError as Error).message);
+        return [];
+      }
     }
 
     // ── 3. Apply metadata filters on the pgvector candidates ────────────────
@@ -310,7 +315,8 @@ export class ContextRetriever {
     for (const query of queries.slice(0, 10)) {
       const results = await this.retrieve(scanId, query, k);
       if (results.length > 0) {
-        scores.push(results.reduce((s, r) => s + r.similarityScore, 0) / results.length);
+        const measuredScores = results.map((result) => result.denseScore ?? result.similarityScore);
+        scores.push(measuredScores.reduce((sum, score) => sum + score, 0) / measuredScores.length);
       }
     }
 

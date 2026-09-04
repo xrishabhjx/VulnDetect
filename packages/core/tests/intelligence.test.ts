@@ -357,7 +357,7 @@ describe("ML Evaluation Metrics", () => {
 describe("RemediationValidator", () => {
   const validator = new RemediationValidator();
 
-  it("should pass mitigate candidates without version check", async () => {
+  it("should record mitigate candidates without claiming resolution proof", async () => {
     const report: RemediationReport = {
       scanId: "scan1", cveId: "CVE-2023-1234",
       packageName: "express", ecosystem: "npm",
@@ -372,8 +372,8 @@ describe("RemediationValidator", () => {
       reasoningTrace: null, contextChunks: [], validationPassed: false,
     };
     const validated = await validator.validate(report, "npm", "4.17.1");
-    expect(validated.validationPassed).toBe(true);
-    expect(validated.candidates[0].validated).toBe(true);
+    expect(validated.validationPassed).toBe(false);
+    expect(validated.candidates[0].validated).toBe(false);
     expect(validated.candidates[0].rejected).toBe(false);
   });
 });

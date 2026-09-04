@@ -2,6 +2,7 @@ import { GitHubClient } from "./github/index.js";
 import { parseManifest } from "./parsers/index.js";
 import { OSVClient } from "./vulndb/osv-client.js";
 import { NVDClient } from "./vulndb/nvd-client.js";
+import { GitHubAdvisoryClient } from "./vulndb/github-advisory-client.js";
 import { getDB, disconnectDB } from "./db.js";
 import type {
   ParsedDependency,
@@ -9,11 +10,14 @@ import type {
   ScanReport,
   Severity,
   DependencyScanResult,
+  VulnerabilitySourceState,
 } from "./types.js";
 
 export interface ScanOptions {
   /** Use NVD as an additional data source (slower due to rate limits) */
   useNVD?: boolean;
+  /** Query GitHub's package-scoped advisory database when a token is configured. */
+  useGitHubAdvisories?: boolean;
   /** Skip dev dependencies */
   skipDev?: boolean;
   /** Save results to database */
@@ -22,6 +26,7 @@ export interface ScanOptions {
 
 const DEFAULT_OPTIONS: ScanOptions = {
   useNVD: false,
+  useGitHubAdvisories: true,
   skipDev: false,
   persist: true,
 };
@@ -34,11 +39,15 @@ export class VulnerabilityScanner {
   private github: GitHubClient;
   private osv: OSVClient;
   private nvd: NVDClient;
+  private githubAdvisories: GitHubAdvisoryClient;
+  private readonly githubAdvisoriesEnabled: boolean;
 
   constructor(githubToken?: string, nvdApiKey?: string) {
     this.github = new GitHubClient(githubToken);
     this.osv = new OSVClient();
     this.nvd = new NVDClient(nvdApiKey);
+    this.githubAdvisories = new GitHubAdvisoryClient(githubToken);
+    this.githubAdvisoriesEnabled = Boolean(githubToken || process.env.GITHUB_TOKEN);
   }
 
   /**
@@ -75,23 +84,42 @@ export class VulnerabilityScanner {
     }
 
     // Deduplicate by ecosystem + name + version
-    const deduped = this.deduplicateDeps(allDeps);
+    const deduped = this.deduplicateDeps(this.resolveNpmLockfileVersions(allDeps));
+    const unresolvedDependencies = deduped.filter((d) =>
+      !d.version || d.version === "UNKNOWN" || d.version === "latest"
+    ).length;
 
     // ── Step 3: Query vulnerability databases ────────────────────────────
     const results: DependencyScanResult[] = [];
+    const sources: VulnerabilitySourceState[] = [
+      { source: "OSV" as const, status: "available" as const },
+      { source: "NVD" as const, status: opts.useNVD ? "available" as const : "disabled" as const },
+      { source: "GITHUB" as const, status: opts.useGitHubAdvisories && this.githubAdvisoriesEnabled ? "available" as const : "disabled" as const },
+    ];
 
     // Use OSV batch API for efficiency
-    const osvBatchResults = await this.osv.queryBatch(
-      deduped.map((d) => ({
-        ecosystem: d.ecosystem,
-        name: d.name,
-        version: d.version,
-      }))
-    );
+    let osvBatchResults = new Map<string, UnifiedVulnerability[]>();
+    try {
+      osvBatchResults = await this.osv.queryBatch(deduped.map((d) => ({
+        ecosystem: d.ecosystem, name: d.name, version: d.version,
+      })));
+    } catch (error) {
+      sources[0] = { source: "OSV", status: "unavailable", error: this.errorMessage(error) };
+    }
 
     for (const dep of deduped) {
       const key = `${dep.ecosystem}:${dep.name}@${dep.version}`;
       let vulns: UnifiedVulnerability[] = osvBatchResults.get(key) || [];
+
+      if (opts.useGitHubAdvisories && this.githubAdvisoriesEnabled && dep.version !== "UNKNOWN") {
+        try {
+          const advisories = await this.githubAdvisories.query(dep.ecosystem, dep.name, dep.version);
+          vulns = this.mergeVulnerabilities(vulns, advisories);
+        } catch (error) {
+          sources.find((s) => s.source === "GITHUB")!.status = "unavailable";
+          sources.find((s) => s.source === "GITHUB")!.error = this.errorMessage(error);
+        }
+      }
 
       // Optionally enrich with NVD data
       if (opts.useNVD && vulns.length > 0) {
@@ -128,6 +156,13 @@ export class VulnerabilityScanner {
       totalDependencies: deduped.length,
       totalVulnerabilities: allVulns.length,
       severityCounts,
+      dataQuality: unresolvedDependencies > 0 || sources.some((s) => s.status === "unavailable") ? "partial" : "complete",
+      unresolvedDependencies,
+      warnings: [
+        ...(unresolvedDependencies > 0 ? [`${unresolvedDependencies} dependencies have no resolved installed version; vulnerability matching was skipped for them.`] : []),
+        ...sources.filter((s) => s.status === "unavailable").map((s) => `${s.source} was unavailable: ${s.error ?? "unknown error"}`),
+      ],
+      sources,
       results,
     };
 
@@ -137,6 +172,36 @@ export class VulnerabilityScanner {
     }
 
     return report;
+  }
+
+  private mergeVulnerabilities(
+    existing: UnifiedVulnerability[],
+    incoming: UnifiedVulnerability[]
+  ): UnifiedVulnerability[] {
+    const merged = [...existing];
+    for (const candidate of incoming) {
+      const match = merged.find((v) =>
+        (candidate.cveId && v.cveId === candidate.cveId) ||
+        (candidate.githubAdvisoryId && v.githubAdvisoryId === candidate.githubAdvisoryId) ||
+        (candidate.osvId && v.osvId === candidate.osvId)
+      );
+      if (!match) {
+        merged.push(candidate);
+        continue;
+      }
+      match.githubAdvisoryId ??= candidate.githubAdvisoryId;
+      match.osvId ??= candidate.osvId;
+      match.cveId ??= candidate.cveId;
+      match.cvssScore ??= candidate.cvssScore;
+      match.cvssVector ??= candidate.cvssVector;
+      match.fixedVersions = [...new Set([...match.fixedVersions, ...candidate.fixedVersions])];
+      match.references = [...new Set([...match.references, ...candidate.references])];
+    }
+    return merged;
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : "unknown source error";
   }
 
   /**
@@ -149,6 +214,22 @@ export class VulnerabilityScanner {
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
+    });
+  }
+
+  private resolveNpmLockfileVersions(deps: ParsedDependency[]): ParsedDependency[] {
+    const lockVersions = new Map<string, string>();
+    for (const dep of deps) {
+      if (dep.ecosystem === "npm" && dep.manifestPath.endsWith("package-lock.json")) {
+        const current = lockVersions.get(dep.name);
+        if (!current || dep.name.split("/").length <= 2) lockVersions.set(dep.name, dep.version);
+      }
+    }
+
+    return deps.map((dep) => {
+      if (dep.ecosystem !== "npm" || dep.version !== "UNKNOWN") return dep;
+      const resolved = lockVersions.get(dep.name);
+      return resolved ? { ...dep, version: resolved } : dep;
     });
   }
 
@@ -184,7 +265,8 @@ export class VulnerabilityScanner {
         repoUrl: report.repoUrl,
         repoOwner: report.repoOwner,
         repoName: report.repoName,
-        status: "complete",
+        status: report.dataQuality,
+        sourceStates: JSON.stringify(report.sources),
         totalDeps: report.totalDependencies,
         totalVulns: report.totalVulnerabilities,
         completedAt: new Date(),
@@ -193,6 +275,7 @@ export class VulnerabilityScanner {
             ecosystem: r.dependency.ecosystem,
             name: r.dependency.name,
             version: r.dependency.version,
+            versionSpec: r.dependency.versionSpec ?? null,
             manifestPath: r.dependency.manifestPath,
             isDev: r.dependency.isDev,
             vulnerabilities: {

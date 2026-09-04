@@ -20,6 +20,7 @@ model Scan {
   totalDeps    Int          @default(0)
   totalVulns   Int          @default(0)
   errorMessage String?      @db.Text
+  sourceStates String?      @db.Text // JSON: VulnerabilitySourceState[]
   knowledgeGraph String?    @db.Text // JSON: RepositoryKnowledgeGraph
   intelligenceSummary String? @db.Text // JSON: IntelligenceSummary
   createdAt    DateTime     @default(now())
@@ -43,6 +44,7 @@ model Dependency {
   ecosystem       String          // npm | maven | pypi
   name            String
   version         String
+  versionSpec     String?
   manifestPath    String
   isDev           Boolean         @default(false)
   vulnerabilities Vulnerability[]
@@ -277,6 +279,7 @@ model EvaluationResult {
   vulnReductionRate     Float?
 
   notes    String? @db.Text
+  evaluationMode String @default("weak-proxy") // labelled | weak-proxy
   runAt    DateTime @default(now())
 
   @@index([scanId])

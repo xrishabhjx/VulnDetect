@@ -31,14 +31,16 @@ describe("NpmParser", () => {
     // Check express
     const express = deps.find((d) => d.name === "express");
     expect(express).toBeDefined();
-    expect(express!.version).toBe("4.18.2"); // ^ stripped
+    expect(express!.version).toBe("UNKNOWN");
+    expect(express!.versionSpec).toBe("^4.18.2");
     expect(express!.isDev).toBe(false);
     expect(express!.ecosystem).toBe("npm");
 
     // Check jest
     const jest = deps.find((d) => d.name === "jest");
     expect(jest).toBeDefined();
-    expect(jest!.version).toBe("29.0.0"); // >= stripped
+    expect(jest!.version).toBe("UNKNOWN");
+    expect(jest!.versionSpec).toBe(">=29.0.0");
     expect(jest!.isDev).toBe(true);
 
     // Check exact version
@@ -55,6 +57,33 @@ describe("NpmParser", () => {
   it("should handle malformed JSON gracefully", () => {
     const deps = parser.parse("not json at all", "package.json");
     expect(deps).toHaveLength(0);
+  });
+
+  it("should parse installed versions from package-lock.json", () => {
+    const content = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": { name: "test-project", version: "1.0.0" },
+        "node_modules/express": { version: "4.18.2" },
+        "node_modules/@scope/pkg": { version: "2.1.0", dev: true },
+      },
+    });
+    const deps = parser.parse(content, "package-lock.json");
+    expect(deps.find((d) => d.name === "express")?.version).toBe("4.18.2");
+    expect(deps.find((d) => d.name === "@scope/pkg")?.version).toBe("2.1.0");
+  });
+
+  it("should parse direct installed versions from pnpm-lock.yaml", () => {
+    const content = `lockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      express:\n        specifier: ^4.18.0\n        version: 4.18.2\n    devDependencies:\n      vitest:\n        specifier: ^3.0.0\n        version: 3.2.4`;
+    const deps = parser.parse(content, "pnpm-lock.yaml");
+    expect(deps.find((d) => d.name === "express")?.version).toBe("4.18.2");
+    expect(deps.find((d) => d.name === "vitest")?.version).toBe("3.2.4");
+  });
+
+  it("should parse installed versions from yarn.lock", () => {
+    const content = `"express@^4.18.0":\n  version "4.18.2"\n  resolved "https://registry.yarnpkg.com/express/-/express-4.18.2.tgz"`;
+    const deps = parser.parse(content, "yarn.lock");
+    expect(deps.find((d) => d.name === "express")?.version).toBe("4.18.2");
   });
 });
 
@@ -150,7 +179,8 @@ django
     expect(flask!.ecosystem).toBe("pypi");
 
     const requests = deps.find((d) => d.name === "requests");
-    expect(requests!.version).toBe("2.25.0");
+    expect(requests!.version).toBe("UNKNOWN");
+    expect(requests!.versionSpec).toBe(">=2.25.0");
 
     // django has no version
     const django = deps.find((d) => d.name === "django");

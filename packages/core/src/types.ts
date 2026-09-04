@@ -7,6 +7,8 @@ export type Ecosystem = "npm" | "maven" | "pypi" | "cargo" | "go" | "nuget";
 export interface ParsedDependency {
   name: string;
   version: string;
+  /** Original manifest constraint when the installed version is unresolved. */
+  versionSpec?: string;
   ecosystem: Ecosystem;
   isDev: boolean;
   manifestPath: string;
@@ -21,6 +23,14 @@ export interface ManifestFile {
 
 /** Severity level for vulnerabilities */
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN";
+
+export type VulnerabilitySourceStatus = "available" | "unavailable" | "disabled";
+
+export interface VulnerabilitySourceState {
+  source: "OSV" | "NVD" | "GITHUB" | "CISA_KEV";
+  status: VulnerabilitySourceStatus;
+  error?: string;
+}
 
 /** Unified vulnerability record from any source */
 export interface UnifiedVulnerability {
@@ -60,6 +70,10 @@ export interface ScanReport {
   totalDependencies: number;
   totalVulnerabilities: number;
   severityCounts: Record<Severity, number>;
+  dataQuality: "complete" | "partial";
+  unresolvedDependencies: number;
+  warnings: string[];
+  sources: VulnerabilitySourceState[];
   results: DependencyScanResult[];
 }
 
@@ -489,6 +503,20 @@ export interface EvalMetrics {
   retrieval: RetrievalMetrics;
   recommendation: RecommendationMetrics;
   validation: ValidationMetrics;
+}
+
+export interface EvaluationLabels {
+  recommendations?: Array<{
+    cveId: string | null;
+    packageName: string;
+    expectedAction: RemediationAction;
+    expectedVersion?: string | null;
+  }>;
+  retrieval?: Array<{
+    cveId: string | null;
+    packageName: string;
+    relevantChunkIds: string[];
+  }>;
 }
 
 // ─── Full Analysis Result ─────────────────────────────────────────────────────

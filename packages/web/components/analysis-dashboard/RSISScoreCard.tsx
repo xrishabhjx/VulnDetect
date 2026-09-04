@@ -20,7 +20,7 @@ export function RSISScoreCard({ rsis }: RSISScoreCardProps) {
       name: "Retrieval",
       value: rsis.retrievalScore,
       weight: rsis.weights.retrieval,
-      description: "BM25+Dense similarity relevance",
+      description: "Measured dense retrieval relevance",
     },
     {
       name: "Validation",

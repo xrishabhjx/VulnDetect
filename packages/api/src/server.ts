@@ -52,12 +52,23 @@ function parseJson<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
+function parseBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function parsePositiveInt(value: unknown, fallback: number, max: number): number {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return Math.min(value, max);
+  }
+  return fallback;
+}
+
 function toScanReport(scan: any): ScanReport {
   const severityCounts: ScanReport["severityCounts"] = {
     CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, UNKNOWN: 0,
   };
   const results = (scan.dependencies ?? []).map((dep: any) => ({
-    dependency: { name: dep.name, version: dep.version, ecosystem: dep.ecosystem, isDev: dep.isDev, manifestPath: dep.manifestPath },
+    dependency: { name: dep.name, version: dep.version, versionSpec: dep.versionSpec ?? undefined, ecosystem: dep.ecosystem, isDev: dep.isDev, manifestPath: dep.manifestPath },
     vulnerabilities: (dep.vulnerabilities ?? []).map((v: any) => {
       const severity = severityCounts[v.severity as keyof typeof severityCounts] === undefined ? "UNKNOWN" : v.severity;
       severityCounts[severity as keyof typeof severityCounts] += 1;
@@ -75,6 +86,10 @@ function toScanReport(scan: any): ScanReport {
     scannedAt: (scan.completedAt ?? scan.createdAt ?? new Date()).toISOString(),
     totalDependencies: scan.totalDeps ?? results.length,
     totalVulnerabilities: scan.totalVulns ?? results.reduce((total: number, result: any) => total + result.vulnerabilities.length, 0),
+    dataQuality: scan.status === "partial" ? "partial" : "complete",
+    unresolvedDependencies: results.filter((result: any) => result.dependency.version === "UNKNOWN").length,
+    warnings: scan.status === "partial" ? ["This scan has incomplete dependency or vulnerability-source coverage."] : [],
+    sources: parseJson(scan.sourceStates, []),
     severityCounts, results,
   } as ScanReport;
 }
@@ -128,7 +143,7 @@ app.get("/api/health", (_req, res) => {
 // ─── Start a New Basic Scan (Phase 1) ───────────────────────────────────────
 
 app.post("/api/scan", async (req, res) => {
-  const { repoUrl, useNVD, skipDev } = req.body;
+  const { repoUrl, useNVD, useGitHubAdvisories, skipDev } = req.body;
 
   if (!repoUrl || typeof repoUrl !== "string") {
     res.status(400).json({ error: "repoUrl is required" });
@@ -138,15 +153,18 @@ app.post("/api/scan", async (req, res) => {
   try {
     const scanner = new VulnerabilityScanner();
     const report = await scanner.scan(repoUrl, {
-      useNVD: useNVD || false,
-      skipDev: skipDev || false,
+      useNVD: parseBoolean(useNVD),
+      useGitHubAdvisories: parseBoolean(useGitHubAdvisories, true),
+      skipDev: parseBoolean(skipDev),
       persist: true,
     });
 
     res.json(report);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Scan failed";
-    const statusCode = message.includes("No dependency manifest files found") ? 400 : 500;
+    const statusCode = message.includes("No dependency manifest files found")
+      ? 400
+      : /quota|Required Gemini neural|Required AI reasoning/i.test(message) ? 503 : 500;
     res.status(statusCode).json({ error: message });
   }
 });
@@ -199,7 +217,7 @@ app.get("/api/scans", async (_req, res) => {
 // ─── Phase 2: Full Intelligence Analysis ───────────────────────────────────
 
 app.post("/api/analyze", async (req, res) => {
-  const { repoUrl, useNVD, skipDev, skipEmbedding, skipSimilarRepos, skipReasoning, maxRemediations } = req.body;
+  const { repoUrl, useNVD, useGitHubAdvisories, skipDev, skipEmbedding, skipSimilarRepos, skipReasoning, maxRemediations } = req.body;
 
   if (!repoUrl || typeof repoUrl !== "string") {
     res.status(400).json({ error: "repoUrl is required" });
@@ -222,12 +240,13 @@ app.post("/api/analyze", async (req, res) => {
   try {
     const analyzer = new IntelligenceAnalyzer();
     const result = await analyzer.analyze(repoUrl, {
-      useNVD: useNVD || false,
-      skipDev: skipDev || false,
-      skipEmbedding: skipEmbedding || false,
-      skipSimilarRepos: skipSimilarRepos || false,
-      skipReasoning: skipReasoning || false,
-      maxRemediations: Math.min(Math.max(Number(maxRemediations) || 3, 1), Number(process.env.MAX_REMEDIATIONS ?? 3)),
+      useNVD: parseBoolean(useNVD),
+      useGitHubAdvisories: parseBoolean(useGitHubAdvisories, true),
+      skipDev: parseBoolean(skipDev),
+      skipEmbedding: parseBoolean(skipEmbedding),
+      skipSimilarRepos: parseBoolean(skipSimilarRepos),
+      skipReasoning: parseBoolean(skipReasoning),
+      maxRemediations: parsePositiveInt(maxRemediations, 3, parsePositiveInt(Number(process.env.MAX_REMEDIATIONS), 3, 100)),
       persist: true,
       onProgress: wantsEventStream
         ? (event) => sendEvent("progress", event)
@@ -242,7 +261,9 @@ app.post("/api/analyze", async (req, res) => {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Analysis failed";
-    const statusCode = message.includes("No dependency manifest files found") ? 400 : 500;
+    const statusCode = message.includes("No dependency manifest files found")
+      ? 400
+      : /quota|Required Gemini neural|Required AI reasoning/i.test(message) ? 503 : 500;
     if (wantsEventStream) {
       sendEvent("error", { error: message, statusCode });
       res.end();
@@ -346,7 +367,7 @@ app.get("/api/similar/:id", async (req, res) => {
 // ─── Run ML Evaluation on an Analyzed Repository ────────────────────────────
 
 app.post("/api/evaluate", async (req, res) => {
-  const { scanId } = req.body;
+  const { scanId, labels } = req.body;
 
   if (!scanId || typeof scanId !== "string") {
     res.status(400).json({ error: "scanId is required" });
@@ -391,8 +412,8 @@ app.post("/api/evaluate", async (req, res) => {
         details: v.details,
         publishedDate: v.publishedDate,
         modifiedDate: v.modifiedDate,
-        fixedVersions: v.fixedVersions ? JSON.parse(v.fixedVersions) : [],
-        references: v.references ? JSON.parse(v.references) : [],
+        fixedVersions: parseJson<string[]>(v.fixedVersions, []),
+        references: parseJson<string[]>(v.references, []),
         source: v.source as any,
         affectedRange: v.affectedRange,
         kev: v.kev,
@@ -405,15 +426,15 @@ app.post("/api/evaluate", async (req, res) => {
       cveId: r.cveId,
       packageName: r.packageName,
       ecosystem: r.ecosystem as any,
-      candidates: JSON.parse(r.candidates),
+      candidates: parseJson(r.candidates, []),
       reasoningTrace: r.reasoningTrace,
       contextChunks: [],
       validationPassed: r.validationPassed,
     }));
 
-    const metrics = await evaluator.evaluate(scanId, scanResults, remediations);
+    const metrics = await evaluator.evaluate(scanId, scanResults, remediations, labels);
 
-    res.json({ scanId, metrics });
+    res.json({ scanId, metrics, evaluationMode: labels ? "labelled" : "weak-proxy" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Evaluation failed";
     res.status(500).json({ error: message });
@@ -452,7 +473,7 @@ app.get("/api/evaluate/:id", async (req, res) => {
         vulnReductionRate: evalResult.vulnReductionRate ?? 0,
       },
     };
-    res.json({ scanId: evalResult.scanId, metrics, runAt: evalResult.runAt });
+    res.json({ scanId: evalResult.scanId, metrics, evaluationMode: evalResult.evaluationMode, runAt: evalResult.runAt });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch evaluation results";
     res.status(500).json({ error: message });

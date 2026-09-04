@@ -167,7 +167,7 @@ export class RSISScorer {
       }
     }
 
-    const semverCompatRate = totalUpgrades > 0 ? (safeUpgrades / totalUpgrades) * 100 : 100;
+    const semverCompatRate = totalUpgrades > 0 ? (safeUpgrades / totalUpgrades) * 100 : 0;
 
     return {
       criticalVulns,
@@ -181,7 +181,7 @@ export class RSISScorer {
       meanRetrievalSimilarity,
       hybridMRR: meanRetrievalSimilarity > 0 ? meanRetrievalSimilarity * 0.9 : 0.5,
       validatedCandidates,
-      totalValidated: allCandidates.filter((c) => c.validated !== undefined).length,
+      totalValidated: allCandidates.filter((c) => c.validated || c.rejected).length,
       recentDeps: 0,
       kevCount,
       semverCompatRate,
@@ -209,20 +209,24 @@ export class RSISScorer {
     const retrievalScore =
       signals.meanRetrievalSimilarity > 0
         ? Math.min(100, signals.meanRetrievalSimilarity * 100)
-        : 50;
+        : 0;
 
     // 3. Validation Score
     const validationScore =
-      signals.totalValidated > 0
+      signals.totalVulns === 0
+        ? 100
+        : signals.totalValidated > 0
         ? (signals.validatedCandidates / signals.totalValidated) * 100
-        : 50;
+        : 0;
 
     // 4. Maintainability Score
     const vulnDensity = signals.totalDeps > 0 ? signals.totalVulns / signals.totalDeps : 0;
     const maintainabilityScore = Math.max(0, 100 - (vulnDensity * 20));
 
     // 5. Compatibility Score
-    const compatibilityScore = Math.min(100, signals.semverCompatRate);
+    const compatibilityScore = signals.totalVulns === 0
+      ? 100
+      : signals.semverCompatRate;
 
     return {
       securityScore,

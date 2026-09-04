@@ -170,6 +170,9 @@ export class Embedder {
     if (this.provider === "gemini" && !this.quotaExceeded) {
       const result = await this.geminiEmbed(text, "RETRIEVAL_DOCUMENT");
       if (result) return result;
+      if (process.env.REQUIRE_NEURAL_EMBEDDINGS?.toLowerCase() === "true") {
+        throw new Error("Required Gemini neural embedding failed");
+      }
       console.warn("[Embedder] Gemini embed failed — falling back to local TF-IDF");
       this.provider = "local";
       this.quotaExceeded = true;
@@ -181,6 +184,9 @@ export class Embedder {
     if (this.provider === "gemini" && !this.quotaExceeded) {
       const result = await this.geminiEmbed(query, "RETRIEVAL_QUERY");
       if (result) return result;
+      if (process.env.REQUIRE_NEURAL_EMBEDDINGS?.toLowerCase() === "true") {
+        throw new Error("Required Gemini neural query embedding failed");
+      }
       this.provider = "local";
       this.quotaExceeded = true;
     }
@@ -192,7 +198,10 @@ export class Embedder {
 
     if (this.provider === "gemini" && !this.quotaExceeded) {
       const results = await this.geminiBatchEmbed(texts);
-      // Fill any nulls with local fallback
+      if (process.env.REQUIRE_NEURAL_EMBEDDINGS?.toLowerCase() === "true" && results.some((result) => !result)) {
+        throw new Error("Required Gemini neural batch embedding failed");
+      }
+      // Fill any nulls with local fallback only in explicitly permissive mode.
       return results.map((r, i) => r ?? localEmbed(texts[i!]));
     }
 
@@ -242,6 +251,7 @@ export class Embedder {
           );
           stored++;
         } catch (err) {
+          if (process.env.REQUIRE_NEURAL_EMBEDDINGS?.toLowerCase() === "true") throw err;
           console.warn(`[Embedder] Failed to store chunk from ${chunk.filePath}:`, err);
         }
       }
@@ -290,7 +300,11 @@ export class Embedder {
         if (isQuotaExceeded) {
           this.provider = "local";
           this.quotaExceeded = true;
-          console.warn("[Embedder] Gemini quota exceeded — falling back to local TF-IDF for this run.");
+          console.warn(
+            process.env.REQUIRE_NEURAL_EMBEDDINGS?.toLowerCase() === "true"
+              ? "[Embedder] Gemini quota exceeded — strict neural mode is stopping this analysis."
+              : "[Embedder] Gemini quota exceeded — falling back to local TF-IDF for this run."
+          );
           return null;
         }
           return null;
@@ -337,7 +351,11 @@ export class Embedder {
           if (isQuotaExceeded) {
             this.provider = "local";
             this.quotaExceeded = true;
-            console.warn("[Embedder] Gemini quota exceeded — falling back to local TF-IDF for this run.");
+            console.warn(
+              process.env.REQUIRE_NEURAL_EMBEDDINGS?.toLowerCase() === "true"
+                ? "[Embedder] Gemini quota exceeded — strict neural mode is stopping this analysis."
+                : "[Embedder] Gemini quota exceeded — falling back to local TF-IDF for this run."
+            );
             return texts.map(() => null);
           }
           if (isNotFound && modelName !== models[models.length - 1]) {

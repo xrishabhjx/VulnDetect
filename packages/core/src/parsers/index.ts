@@ -18,11 +18,15 @@ const parsers: ManifestParser[] = [
  */
 export const MANIFEST_FILENAMES = [
   "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
   "pom.xml",
   "requirements.txt",
   "requirements-dev.txt",
   "requirements_dev.txt",
   "Pipfile",
+  "Pipfile.lock",
 ];
 
 /**

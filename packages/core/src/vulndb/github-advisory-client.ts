@@ -1,4 +1,5 @@
 import type { Ecosystem, UnifiedVulnerability } from "../types.js";
+import semver from "semver";
 
 // ─── GitHub Advisory GraphQL Types ──────────────────────────────────────────
 
@@ -160,7 +161,7 @@ export class GitHubAdvisoryClient {
       const data = (await response.json()) as GHAdvisoryResponse;
       const nodes = data?.data?.securityVulnerabilities?.nodes ?? [];
 
-      return nodes.map((node): UnifiedVulnerability => {
+      return nodes.filter((node) => this.appliesToVersion(node, ecosystem, packageName, version)).map((node): UnifiedVulnerability => {
         // Extract CVE ID from identifiers
         const cveId = node.identifiers.find((i) => i.type === "CVE")?.value ?? null;
 
@@ -195,6 +196,27 @@ export class GitHubAdvisoryClient {
     } catch (error) {
       console.warn(`[GitHubAdvisory] Failed to query for ${packageName}:`, error);
       return [];
+    }
+  }
+
+  private appliesToVersion(
+    node: GHAdvisoryNode,
+    ecosystem: Ecosystem,
+    packageName: string,
+    version: string
+  ): boolean {
+    const affected = node.vulnerabilities.nodes.find((entry) =>
+      entry.package.name.toLowerCase() === packageName.toLowerCase() &&
+      this.mapEcosystem(entry.package.ecosystem) === ecosystem
+    );
+    if (!affected) return false;
+    if (ecosystem !== "npm") return true;
+    try {
+      return semver.satisfies(version.replace(/^v/, ""), affected.vulnerableVersionRange, { includePrerelease: true });
+    } catch {
+      // Preserve the advisory when GitHub's range is not npm-semver syntax;
+      // the source has still identified the exact package.
+      return true;
     }
   }
 }

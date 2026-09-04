@@ -11,7 +11,7 @@ const NPM_REGISTRY = "https://registry.npmjs.org";
 const PYPI_REGISTRY = "https://pypi.org/pypi";
 const MAVEN_CENTRAL = "https://search.maven.org/solrsearch/select";
 
-async function checkNpmVersion(pkg: string, version: string): Promise<boolean> {
+async function checkNpmVersion(pkg: string, version: string): Promise<boolean | null> {
   try {
     const response = await fetch(`${NPM_REGISTRY}/${encodeURIComponent(pkg)}/${version}`, {
       method: "HEAD",
@@ -19,33 +19,33 @@ async function checkNpmVersion(pkg: string, version: string): Promise<boolean> {
     });
     return response.ok;
   } catch {
-    return true; // assume exists on network error
+    return null;
   }
 }
 
-async function checkPypiVersion(pkg: string, version: string): Promise<boolean> {
+async function checkPypiVersion(pkg: string, version: string): Promise<boolean | null> {
   try {
     const response = await fetch(`${PYPI_REGISTRY}/${pkg}/${version}/json`, {
       signal: AbortSignal.timeout(8_000),
     });
     return response.ok;
   } catch {
-    return true;
+    return null;
   }
 }
 
-async function checkMavenVersion(pkg: string, version: string): Promise<boolean> {
+async function checkMavenVersion(pkg: string, version: string): Promise<boolean | null> {
   const [groupId, artifactId] = pkg.split(":");
-  if (!groupId || !artifactId) return true;
+  if (!groupId || !artifactId) return null;
   try {
     const q = `g:${groupId} AND a:${artifactId} AND v:${version}`;
     const url = `${MAVEN_CENTRAL}?q=${encodeURIComponent(q)}&rows=1&wt=json`;
     const response = await fetch(url, { signal: AbortSignal.timeout(8_000) });
-    if (!response.ok) return true;
+    if (!response.ok) return false;
     const data = (await response.json()) as { response: { numFound: number } };
     return data.response.numFound > 0;
   } catch {
-    return true;
+    return null;
   }
 }
 
@@ -53,7 +53,7 @@ async function checkVersionSafe(
   ecosystem: Ecosystem,
   pkg: string,
   version: string
-): Promise<{ safe: boolean; newVulnCount: number }> {
+): Promise<{ safe: boolean | null; newVulnCount: number }> {
   const osvEcosystem = ecosystem === "npm" ? "npm"
     : ecosystem === "pypi" ? "PyPI"
     : ecosystem === "maven" ? "Maven"
@@ -70,12 +70,12 @@ async function checkVersionSafe(
       signal: AbortSignal.timeout(10_000),
     });
 
-    if (!response.ok) return { safe: true, newVulnCount: 0 };
+    if (!response.ok) return { safe: null, newVulnCount: 0 };
     const data = (await response.json()) as { vulns?: unknown[] };
     const count = data.vulns?.length ?? 0;
     return { safe: count === 0, newVulnCount: count };
   } catch {
-    return { safe: true, newVulnCount: 0 };
+    return { safe: null, newVulnCount: 0 };
   }
 }
 
@@ -98,7 +98,7 @@ export class RemediationValidator {
 
     for (const candidate of report.candidates) {
       await this.validateCandidate(candidate, report.packageName, ecosystem, currentVersion);
-      if (!candidate.rejected) anyPassed = true;
+      if (candidate.validated && !candidate.rejected) anyPassed = true;
     }
 
     return {
@@ -114,8 +114,10 @@ export class RemediationValidator {
     currentVersion?: string
   ): Promise<void> {
     if (candidate.action === "accept" || candidate.action === "mitigate") {
-      candidate.validated = true;
-      candidate.validationNotes = "No version change required — no semver resolution needed";
+      // An accept/mitigate decision is a risk decision, not proof that the
+      // vulnerability is absent or safely resolved.
+      candidate.validated = false;
+      candidate.validationNotes = "Decision recorded without vulnerability-resolution proof; confirm reachability and compensating controls separately";
       return;
     }
 
@@ -132,6 +134,11 @@ export class RemediationValidator {
       candidate.rejected = true;
       candidate.rejectionReason = `Version ${targetVersion} not found in ${ecosystem} package registry`;
       candidate.confidence = 0;
+      return;
+    }
+    if (exists === null) {
+      candidate.validated = false;
+      candidate.validationNotes = `Could not verify that ${targetVersion} exists in the ${ecosystem} registry`;
       return;
     }
 
@@ -154,10 +161,19 @@ export class RemediationValidator {
 
     // Stage 3: OSV Re-scan Security Check
     const { safe, newVulnCount } = await checkVersionSafe(ecosystem, packageName, targetVersion);
-    if (!safe) {
+    if (safe === false) {
+      candidate.rejected = true;
+      candidate.rejectionReason = `Proposed version ${targetVersion} has ${newVulnCount} known OSV vulnerability(s)`;
       candidate.confidence = Math.min(candidate.confidence * 0.3, 0.2);
       const prevNotes = candidate.validationNotes ? `${candidate.validationNotes}; ` : "";
-      candidate.validationNotes = `${prevNotes}⚠️ Warning: Proposed version ${targetVersion} contains ${newVulnCount} known CVE(s) in OSV`;
+      candidate.validationNotes = `${prevNotes}OSV found ${newVulnCount} known vulnerability(s) in the proposed version`;
+      candidate.validated = false;
+      return;
+    }
+    if (safe === null) {
+      candidate.validated = false;
+      candidate.validationNotes = `${candidate.validationNotes ? `${candidate.validationNotes}; ` : ""}Could not verify OSV safety for ${targetVersion}`;
+      return;
     }
 
     candidate.validated = true;

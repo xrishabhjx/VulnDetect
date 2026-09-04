@@ -58,6 +58,15 @@ interface OSVBatchResponse {
   results: OSVQueryResponse[];
 }
 
+export class VulnerabilitySourceError extends Error {
+  readonly source = "OSV" as const;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "VulnerabilitySourceError";
+  }
+}
+
 // ─── Ecosystem Mapping ──────────────────────────────────────────────────────
 
 const ECOSYSTEM_MAP: Record<Ecosystem, string> = {
@@ -110,10 +119,9 @@ export class OSVClient implements VulnDBClient {
       });
 
       if (!response.ok) {
-        console.error(
-          `OSV query failed for ${packageName}@${version}: ${response.status}`
+        throw new VulnerabilitySourceError(
+          `OSV query failed for ${packageName}@${version}: HTTP ${response.status}`
         );
-        return [];
       }
 
       const data = (await response.json()) as OSVQueryResponse;
@@ -121,11 +129,11 @@ export class OSVClient implements VulnDBClient {
         this.normalizeVuln(v, ecosystem, packageName)
       );
     } catch (error) {
-      console.error(
-        `OSV query error for ${packageName}@${version}:`,
-        error
+      if (error instanceof VulnerabilitySourceError) throw error;
+      throw new VulnerabilitySourceError(
+        `OSV query error for ${packageName}@${version}`,
+        { cause: error }
       );
-      return [];
     }
   }
 
@@ -172,8 +180,9 @@ export class OSVClient implements VulnDBClient {
         });
 
         if (!response.ok) {
-          console.error(`OSV batch query failed: ${response.status}`);
-          continue;
+          throw new VulnerabilitySourceError(
+            `OSV batch query failed: HTTP ${response.status}`
+          );
         }
 
         const data = (await response.json()) as OSVBatchResponse;
@@ -187,7 +196,8 @@ export class OSVClient implements VulnDBClient {
           results.set(key, vulns);
         }
       } catch (error) {
-        console.error("OSV batch query error:", error);
+        if (error instanceof VulnerabilitySourceError) throw error;
+        throw new VulnerabilitySourceError("OSV batch query error", { cause: error });
       }
     }
 
@@ -293,11 +303,7 @@ export class OSVClient implements VulnDBClient {
 
     if (vuln.affected) {
       for (const affectedEntry of vuln.affected) {
-        // Check if ecosystem & package match (case-insensitive)
-        const matchEcosystem = affectedEntry.package.ecosystem?.toLowerCase() === ECOSYSTEM_MAP[ecosystem]?.toLowerCase();
-        const matchPackage = affectedEntry.package.name?.toLowerCase() === packageName.toLowerCase();
-
-        if (matchEcosystem || matchPackage || !affectedEntry.package.name) {
+        if (this.matchesAffectedPackage(affectedEntry, ecosystem, packageName)) {
           if (affectedEntry.ranges) {
             for (const range of affectedEntry.ranges) {
               for (const event of range.events) {
@@ -320,10 +326,8 @@ export class OSVClient implements VulnDBClient {
 
     // Build affected range string
     let affectedRange: string | null = null;
-    const affectedEntry = vuln.affected?.find(
-      (a) =>
-        a.package.name?.toLowerCase() === packageName.toLowerCase() ||
-        a.package.ecosystem?.toLowerCase() === ECOSYSTEM_MAP[ecosystem]?.toLowerCase()
+    const affectedEntry = vuln.affected?.find((a) =>
+      this.matchesAffectedPackage(a, ecosystem, packageName)
     );
 
     if (affectedEntry?.ranges?.[0]) {
@@ -354,6 +358,22 @@ export class OSVClient implements VulnDBClient {
       kev: false,
       mitigationGuidance: null,
     };
+  }
+
+  private matchesAffectedPackage(
+    affected: OSVAffected,
+    ecosystem: Ecosystem,
+    packageName: string
+  ): boolean {
+    const expectedEcosystem = ECOSYSTEM_MAP[ecosystem]?.toLowerCase();
+    const affectedEcosystem = affected.package.ecosystem?.toLowerCase();
+    const affectedName = affected.package.name?.toLowerCase();
+    const ecosystemMatches = !affectedEcosystem || affectedEcosystem === expectedEcosystem;
+    const packageMatches = !affectedName || affectedName === packageName.toLowerCase();
+
+    // OSV advisories can contain entries for multiple packages. Missing fields
+    // are treated as wildcards, but present identity fields must all match.
+    return ecosystemMatches && packageMatches;
   }
 
   /**

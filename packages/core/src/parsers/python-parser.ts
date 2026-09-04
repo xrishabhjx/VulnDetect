@@ -14,7 +14,7 @@ export class PythonParser implements ManifestParser {
       basename === "requirements.txt" ||
       basename === "requirements-dev.txt" ||
       basename === "requirements_dev.txt" ||
-      basename === "Pipfile"
+      basename === "Pipfile" || basename === "Pipfile.lock"
     );
   }
 
@@ -24,8 +24,27 @@ export class PythonParser implements ManifestParser {
     if (basename === "pipfile") {
       return this.parsePipfile(content, filepath);
     }
+    if (basename === "pipfile.lock") return this.parsePipfileLock(content, filepath);
 
     return this.parseRequirements(content, filepath);
+  }
+
+  private parsePipfileLock(content: string, filepath: string): ParsedDependency[] {
+    const deps: ParsedDependency[] = [];
+    try {
+      const lockfile = JSON.parse(content) as Record<string, Record<string, { version?: string }>>;
+      for (const [section, packages] of Object.entries(lockfile)) {
+        if (section !== "default" && section !== "develop") continue;
+        for (const [name, entry] of Object.entries(packages ?? {})) {
+          const declared = entry?.version ?? "";
+          const version = declared.match(/^==\s*(\d+(?:\.\d+)+(?:[.-][0-9A-Za-z.-]+)?)$/)?.[1];
+          if (version) deps.push({ name: this.normalizePyPIName(name), version, ecosystem: "pypi", isDev: section === "develop", manifestPath: filepath });
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to parse ${filepath}:`, error);
+    }
+    return deps;
   }
 
   /**
@@ -58,9 +77,12 @@ export class PythonParser implements ManifestParser {
       );
 
       if (match) {
+        const declaredVersion = match[3].trim().split(",")[0].trim();
+        const isExact = match[2] === "==" && /^\d+(?:\.\d+)+(?:[.-][0-9A-Za-z.-]+)?$/.test(declaredVersion);
         deps.push({
           name: this.normalizePyPIName(match[1]),
-          version: match[3].trim().split(",")[0].trim(), // Take the first version constraint
+          version: isExact ? declaredVersion : "UNKNOWN",
+          versionSpec: `${match[2]}${match[3].trim()}`,
           ecosystem: "pypi",
           isDev,
           manifestPath: filepath,
@@ -108,10 +130,13 @@ export class PythonParser implements ManifestParser {
 
       const match = line.match(/^([a-zA-Z0-9._-]+)\s*=\s*"(.+)"$/);
       if (match) {
-        const version = match[2] === "*" ? "latest" : match[2].replace(/^[=<>~!]+/, "");
+        const declaredVersion = match[2];
+        const isExact = declaredVersion !== "*" && /^=\s*\d+(?:\.\d+)+(?:[.-][0-9A-Za-z.-]+)?$/.test(declaredVersion);
+        const version = isExact ? declaredVersion.replace(/^=\s*/, "") : "UNKNOWN";
         deps.push({
           name: this.normalizePyPIName(match[1]),
           version,
+          versionSpec: declaredVersion,
           ecosystem: "pypi",
           isDev: currentSection === "dev-packages",
           manifestPath: filepath,

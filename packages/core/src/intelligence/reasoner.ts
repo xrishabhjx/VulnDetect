@@ -14,10 +14,11 @@ import { ContextRetriever } from "./retriever.js";
 
 // ─── LLM Provider Configuration ──────────────────────────────────────────────
 
-const GROQ_DEFAULT_MODEL   = "llama-3.3-70b-versatile";
-const GEMINI_DEFAULT_MODEL = "gemini-flash-latest";
+const GROQ_DEFAULT_MODEL   = "qwen/qwen3.8-27b";
+const GEMINI_DEFAULT_MODEL = "gemini-3.6-flash";
 const MAX_PROMPT_CHARS = clampConfig("LLM_MAX_PROMPT_CHARS", 5_500, 2_000, 20_000);
-const MAX_OUTPUT_TOKENS = clampConfig("LLM_MAX_OUTPUT_TOKENS", 1_000, 256, 2_000);
+const GROQ_MAX_OUTPUT_TOKENS = clampConfig("GROQ_MAX_OUTPUT_TOKENS", 450, 256, 1_000);
+const GEMINI_MAX_OUTPUT_TOKENS = clampConfig("GEMINI_MAX_OUTPUT_TOKENS", 1_200, 512, 4_000);
 
 function clampConfig(key: string, fallback: number, min: number, max: number): number {
   const parsed = Number.parseInt(process.env[key] ?? "", 10);
@@ -158,34 +159,9 @@ Evidence requirements:
   return sections.join("\n\n");
 }
 
-const OUTPUT_SCHEMA = `Return a JSON object with this exact structure:
-{
-  "candidates": [
-    {
-      "action": "upgrade" | "replace" | "mitigate" | "accept",
-      "explanation": "concise recommendation summary",
-      "reasoning": "summary of justification referencing graph and code evidence",
-      "chainOfReasoning": [
-        { "stepNumber": 1, "observation": "specific file/code observation", "deduction": "logical consequence for security" }
-      ],
-      "evidence": [
-        { "filePath": "path/to/file.ts", "startLine": 10, "endLine": 25, "codeSnippet": "code snippet", "relevance": "why this code matters to the vulnerability" }
-      ],
-      "confidence": 0.0 to 1.0,
-      "compatibilityRisk": "low" | "medium" | "high",
-      "proposedVersion": "X.Y.Z" or null,
-      "alternativePackage": null or "package-name",
-      "dependencyImpact": ["package-name"],
-      "validated": false,
-      "rejected": false,
-      "rejectionReason": null,
-      "validationNotes": null
-    }
-  ],
-  "reasoningTrace": "overall analysis — what the codebase does, why this vuln matters here, what evidence supports the recommendation"
-}
-
-Return exactly ONE candidate, at most two chain-of-reasoning steps, and at most two evidence items. Keep every string concise.`;
+const OUTPUT_SCHEMA = `Return ONLY compact JSON, with no markdown or extra keys:
+{"candidates":[{"action":"upgrade|replace|mitigate|accept","explanation":"short","reasoning":"short","confidence":0.0,"compatibilityRisk":"low|medium|high","proposedVersion":"X.Y.Z or null"}]}
+Return exactly one candidate. Use a proposedVersion only from Fixed Versions. Keep explanation and reasoning under 160 characters each. Do not include evidence, chainOfReasoning, or reasoningTrace.`;
 
 // ─── Context-Aware Reasoning Engine ──────────────────────────────────────────
 
@@ -229,7 +205,7 @@ export class ContextReasoner {
     const groqKey = process.env.GROQ_API_KEY?.trim();
     if (groqKey) {
       chain.push({
-        name: "Groq (llama-3.3-70b-versatile)",
+        name: `Groq (${process.env.GROQ_MODEL ?? GROQ_DEFAULT_MODEL})`,
         baseUrl: "https://api.groq.com/openai/v1",
         apiKey: groqKey,
         modelName: process.env.GROQ_MODEL ?? GROQ_DEFAULT_MODEL,
@@ -269,7 +245,20 @@ export class ContextReasoner {
   ): Promise<RemediationReport> {
     // Retrieve semantically relevant chunks using hybrid BM25+pgvector
     const query = `${packageName} ${vulnerability.summary} ${vulnerability.cveId ?? ""}`;
-    const retrievedChunks = await this.retriever.retrieve(scanId, query, 5);
+    let retrievedChunks: RetrievedChunk[] = [];
+    try {
+      retrievedChunks = await Promise.race([
+        this.retriever.retrieve(scanId, query, 5),
+        new Promise<RetrievedChunk[]>((_, reject) =>
+          setTimeout(() => reject(new Error("retrieval timeout")), 1_000)
+        ),
+      ]);
+    } catch (error) {
+      if (process.env.REQUIRE_NEURAL_EMBEDDINGS?.toLowerCase() === "true" && (error as Error).message.includes("embedding")) {
+        throw error;
+      }
+      console.warn("[Reasoner] Context retrieval unavailable; continuing with supplied context:", (error as Error).message);
+    }
 
     // Merge retrieved chunks into context (context may already have some from prior steps)
     const fullCtx: RepositoryContext = {
@@ -278,6 +267,9 @@ export class ContextReasoner {
     };
 
     if (!this.aiEnabled) {
+      if (process.env.REQUIRE_AI_REASONING?.toLowerCase() === "true") {
+        throw new Error("Required AI reasoning provider is not configured");
+      }
       return this.heuristicFallback(scanId, vulnerability, packageName, version, ecosystem, fullCtx);
     }
 
@@ -315,6 +307,9 @@ export class ContextReasoner {
     }
 
     // All providers exhausted
+    if (process.env.REQUIRE_AI_REASONING?.toLowerCase() === "true") {
+      throw new Error("Required AI reasoning providers failed");
+    }
     console.warn("[Reasoner] All providers failed — applying heuristic fallback");
     return this.heuristicFallback(scanId, vulnerability, packageName, version, ecosystem, fullCtx);
   }
@@ -349,7 +344,7 @@ export class ContextReasoner {
       body: JSON.stringify({
         model: provider.modelName,
         temperature: 0.2,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: GROQ_MAX_OUTPUT_TOKENS,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -377,7 +372,7 @@ export class ContextReasoner {
     if (!text) throw new Error("Groq returned empty content");
 
     const parsed = JSON.parse(text) as { candidates: RemediationCandidate[] };
-    return (parsed.candidates ?? []).map(c => this.enrichCandidateEvidence(c, chunks));
+    return (parsed.candidates ?? []).map(c => this.completeCandidate(c, vulnerability, chunks));
   }
 
   private async callGemini(
@@ -399,7 +394,7 @@ export class ContextReasoner {
         }],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
           responseMimeType: "application/json",
         },
       }),
@@ -419,7 +414,7 @@ export class ContextReasoner {
     if (!text) throw new Error("Gemini returned empty content");
 
     if (candidate?.finishReason === "MAX_TOKENS") {
-      throw new Error(`Gemini response reached the ${MAX_OUTPUT_TOKENS}-token output limit`);
+      throw new Error(`Gemini response reached the ${GEMINI_MAX_OUTPUT_TOKENS}-token output limit`);
     }
 
     let parsed: { candidates: RemediationCandidate[] };
@@ -428,7 +423,7 @@ export class ContextReasoner {
     } catch {
       throw new Error("Gemini returned incomplete or invalid JSON");
     }
-    return (parsed.candidates ?? []).map(c => this.enrichCandidateEvidence(c, chunks));
+    return (parsed.candidates ?? []).map(c => this.completeCandidate(c, vulnerability, chunks));
   }
 
   // ─── Evidence enrichment ─────────────────────────────────────────────────
@@ -460,8 +455,31 @@ export class ContextReasoner {
     return { ...candidate, chainOfReasoning, evidence };
   }
 
+  private completeCandidate(
+    candidate: Partial<RemediationCandidate>,
+    vulnerability: UnifiedVulnerability,
+    chunks: RetrievedChunk[]
+  ): RemediationCandidate {
+    const completed: RemediationCandidate = {
+      action: candidate.action === "upgrade" || candidate.action === "replace" || candidate.action === "mitigate" || candidate.action === "accept"
+        ? candidate.action : vulnerability.fixedVersions.length > 0 ? "upgrade" : "mitigate",
+      explanation: candidate.explanation || `Address ${vulnerability.cveId ?? "the vulnerability"}`,
+      reasoning: candidate.reasoning || "Recommendation derived from the advisory record and repository context.",
+      confidence: typeof candidate.confidence === "number" ? Math.max(0, Math.min(1, candidate.confidence)) : 0.5,
+      compatibilityRisk: candidate.compatibilityRisk === "low" || candidate.compatibilityRisk === "high" ? candidate.compatibilityRisk : "medium",
+      proposedVersion: typeof candidate.proposedVersion === "string" && vulnerability.fixedVersions.includes(candidate.proposedVersion) ? candidate.proposedVersion : null,
+      alternativePackage: null,
+      dependencyImpact: [],
+      validated: false,
+      rejected: false,
+      rejectionReason: null,
+      validationNotes: null,
+    };
+    return this.enrichCandidateEvidence(completed, chunks);
+  }
+
   private shouldDisableProvider(message: string): boolean {
-    return /HTTP (429|503)|rate limit|quota|high demand|UNAVAILABLE/i.test(message);
+    return /HTTP (400|401|403|404|429|503)|model_not_found|invalid.*model|rate limit|quota|high demand|UNAVAILABLE/i.test(message);
   }
 
   // ─── Heuristic fallback ──────────────────────────────────────────────────

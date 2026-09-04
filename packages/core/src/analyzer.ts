@@ -56,6 +56,7 @@ export interface AnalysisProgressEvent {
 
 const DEFAULT_ANALYSIS_OPTIONS: Required<Omit<AnalysisOptions, "onProgress">> = {
   useNVD: false,
+  useGitHubAdvisories: true,
   skipDev: false,
   persist: true,
   skipEmbedding: false,
@@ -135,6 +136,7 @@ export class IntelligenceAnalyzer {
     this.emitProgress(opts.onProgress, "dependency-scanning", "started", 2, "Vulnerability scanning & dependency parsing");
     const scanReport = await this.scanner.scan(repoUrl, {
       useNVD: opts.useNVD,
+      useGitHubAdvisories: opts.useGitHubAdvisories,
       skipDev: opts.skipDev,
       persist: opts.persist,
     });
@@ -182,6 +184,7 @@ export class IntelligenceAnalyzer {
         console.log(`[Analyzer]   → ${chunksIndexed} chunks embedded and stored in pgvector`);
       } catch (err) {
         console.warn("[Analyzer] Embedding failed:", err);
+        if (process.env.REQUIRE_NEURAL_EMBEDDINGS?.toLowerCase() === "true") throw err;
       }
     }
     this.emitProgress(opts.onProgress, "embedding", "completed", 46, "Embedding stage complete");
@@ -210,6 +213,9 @@ export class IntelligenceAnalyzer {
           vuln.kev = true;
         }
       }
+    }
+    if (opts.persist && scanId) {
+      await this.persistKevFlags(scanId, kevSet);
     }
     console.log(`[Analyzer]   → ${kevSet.size} actively exploited CVEs flagged (CISA KEV)`);
 
@@ -260,7 +266,11 @@ export class IntelligenceAnalyzer {
       })
       .slice(0, opts.maxRemediations);
 
-    for (const { dep, vuln } of vulnsToRemediate) {
+    if (opts.skipReasoning) {
+      console.log("[Analyzer] Reasoning skipped by configuration");
+    }
+
+    for (const { dep, vuln } of opts.skipReasoning ? [] : vulnsToRemediate) {
       try {
         // ── Step 9a: Graph traversal for this specific package ─────────────
         const graphPaths = this.rkgBuilder.traverseContext(dep.name, vuln.cveId);
@@ -544,6 +554,20 @@ export class IntelligenceAnalyzer {
         primaryDependencies: JSON.stringify(profile.primaryDependencies),
       },
     });
+  }
+
+  private async persistKevFlags(scanId: string, kevSet: Set<string>): Promise<void> {
+    const db = getDB();
+    const vulnerabilities = await db.vulnerability.findMany({
+      where: { dependency: { scanId }, cveId: { not: null } },
+      select: { id: true, cveId: true },
+    });
+    await Promise.all(vulnerabilities.map((vulnerability) =>
+      db.vulnerability.update({
+        where: { id: vulnerability.id },
+        data: { kev: Boolean(vulnerability.cveId && kevSet.has(vulnerability.cveId)) },
+      })
+    ));
   }
 
   private async persistSimilarRepos(scanId: string, repos: SimilarRepo[]): Promise<void> {

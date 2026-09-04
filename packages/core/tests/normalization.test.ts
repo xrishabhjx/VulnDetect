@@ -20,8 +20,33 @@ describe("Vulnerability Normalization & Fixed Version Pipeline Propagation Audit
   let rkgBuilder: RepoKnowledgeGraphBuilder;
   let validator: RemediationValidator;
   let reasoner: ContextReasoner;
+  let originalFetch: typeof fetch;
 
   beforeEach(() => {
+    process.env.REQUIRE_NEURAL_EMBEDDINGS = "false";
+    process.env.REQUIRE_AI_REASONING = "false";
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) as { package?: { name?: string } } : {};
+      const packageName = body.package?.name ?? "package";
+      const ecosystem = packageName === "django" ? "PyPI"
+        : packageName === "tokio" ? "crates.io"
+        : packageName.includes("gin-gonic") ? "Go"
+        : "npm";
+      const fixedVersion = packageName === "lodash" ? "4.17.21"
+        : packageName === "body-parser" ? "1.20.3"
+        : "2.0.0";
+      return new Response(JSON.stringify({
+        vulns: [{
+          id: `OSV-${packageName}`,
+          aliases: ["CVE-2021-0001"],
+          affected: [{
+            package: { name: packageName, ecosystem },
+            ranges: [{ type: "SEMVER", events: [{ introduced: "0", fixed: fixedVersion }] }],
+          }],
+        }],
+      }), { status: 200 });
+    }) as typeof fetch;
     osvClient = new OSVClient();
     ghAdvisoryClient = new GitHubAdvisoryClient();
     nvdClient = new NVDClient();
@@ -30,9 +55,41 @@ describe("Vulnerability Normalization & Fixed Version Pipeline Propagation Audit
     reasoner = new ContextReasoner();
   });
 
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   // ─── 1. Upstream Advisory Normalization & Fixed Version Extraction ──────
 
   describe("Upstream Normalization (OSV / GitHub / NVD)", () => {
+    it("does not import fixed versions from another package in a multi-package advisory", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () => new Response(JSON.stringify({
+        vulns: [{
+          id: "OSV-MULTI-PACKAGE",
+          aliases: ["CVE-2099-0001"],
+          affected: [
+            {
+              package: { name: "other-package", ecosystem: "npm" },
+              ranges: [{ type: "SEMVER", events: [{ introduced: "0", fixed: "9.9.9" }] }],
+            },
+            {
+              package: { name: "target-package", ecosystem: "npm" },
+              ranges: [{ type: "SEMVER", events: [{ introduced: "0", fixed: "2.0.0" }] }],
+            },
+          ],
+        }],
+      }), { status: 200 })) as typeof fetch;
+
+      try {
+        const results = await osvClient.query("npm", "target-package", "1.0.0");
+        expect(results[0]?.fixedVersions).toEqual(["2.0.0"]);
+        expect(results[0]?.affectedRange).toBe(">=0, <2.0.0");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
     it("correctly extracts fixed versions from raw OSV response for lodash (npm)", async () => {
       // Direct query to OSV for lodash 4.17.15 (vulnerable)
       const results = await osvClient.query("npm", "lodash", "4.17.15");
@@ -204,9 +261,87 @@ describe("Vulnerability Normalization & Fixed Version Pipeline Propagation Audit
       expect(top.explanation).toContain("4.17.21");
 
       // Validate through Validator
+      const validationFetch = globalThis.fetch;
+      globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) =>
+        init?.method === "HEAD"
+          ? new Response(null, { status: 200 })
+          : new Response(JSON.stringify({ vulns: [] }), { status: 200 })) as typeof fetch;
       const validated = await validator.validate(report, "npm", "4.17.15");
+      globalThis.fetch = validationFetch;
       expect(validated.candidates[0].validated).toBe(true);
       expect(validated.candidates[0].rejected).toBe(false);
+    });
+
+    it("rejects a target version that OSV confirms is still vulnerable", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "HEAD") return new Response(null, { status: 200 });
+        return new Response(JSON.stringify({ vulns: [{ id: "OSV-STILL-VULNERABLE" }] }), { status: 200 });
+      }) as typeof fetch;
+
+      try {
+        const report = {
+          scanId: "test-scan-123",
+          cveId: "CVE-2099-0002",
+          packageName: "lodash",
+          ecosystem: "npm" as Ecosystem,
+          candidates: [{
+            action: "upgrade" as const,
+            explanation: "Upgrade lodash",
+            reasoning: "Test candidate",
+            confidence: 0.9,
+            compatibilityRisk: "low" as const,
+            proposedVersion: "4.17.20",
+            alternativePackage: null,
+            dependencyImpact: [],
+            validated: false,
+            rejected: false,
+            rejectionReason: null,
+            validationNotes: null,
+          }],
+          reasoningTrace: "test",
+          contextChunks: [],
+          validationPassed: false,
+        };
+
+        const validated = await validator.validate(report, "npm", "4.17.15");
+        expect(validated.candidates[0]?.validated).toBe(false);
+        expect(validated.candidates[0]?.rejected).toBe(true);
+        expect(validated.candidates[0]?.rejectionReason).toContain("known OSV");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it("does not label accept decisions as vulnerability-resolution proof", async () => {
+      const report = {
+        scanId: "test-scan-accept",
+        cveId: "CVE-2099-0003",
+        packageName: "postcss",
+        ecosystem: "npm" as Ecosystem,
+        candidates: [{
+          action: "accept" as const,
+          explanation: "Build-only dependency",
+          reasoning: "No runtime reachability proof supplied",
+          confidence: 0.67,
+          compatibilityRisk: "low" as const,
+          proposedVersion: null,
+          alternativePackage: null,
+          dependencyImpact: [],
+          validated: false,
+          rejected: false,
+          rejectionReason: null,
+          validationNotes: null,
+        }],
+        reasoningTrace: "test",
+        contextChunks: [],
+        validationPassed: false,
+      };
+
+      const validated = await validator.validate(report, "npm", "8.4.0");
+      expect(validated.candidates[0]?.validated).toBe(false);
+      expect(validated.validationPassed).toBe(false);
+      expect(validated.candidates[0]?.validationNotes).toContain("without vulnerability-resolution proof");
     });
   });
 });

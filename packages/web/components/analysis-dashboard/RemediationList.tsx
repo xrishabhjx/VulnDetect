@@ -107,8 +107,8 @@ function RemediationCardComponent({
 
           {/* Validation notes */}
           {candidate.validationNotes && (
-            <div className="p-3 rounded-lg bg-low/10 border border-low/30 text-xs font-mono text-low">
-              ✓ Validation: {candidate.validationNotes}
+            <div className={`p-3 rounded-lg text-xs font-mono ${candidate.validated ? "bg-low/10 border border-low/30 text-low" : "bg-medium/10 border border-medium/30 text-medium"}`}>
+              {candidate.validated ? "✓ Validation: " : "! Validation status: "}{candidate.validationNotes}
             </div>
           )}
 

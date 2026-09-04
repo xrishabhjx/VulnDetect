@@ -14,6 +14,7 @@ export { NpmParser, MavenParser, PythonParser } from "./parsers/index.js";
 export { parseManifest, getParserForFile, MANIFEST_FILENAMES } from "./parsers/index.js";
 
 export { OSVClient } from "./vulndb/osv-client.js";
+export { VulnerabilitySourceError } from "./vulndb/osv-client.js";
 export { NVDClient } from "./vulndb/nvd-client.js";
 
 export { getDB, disconnectDB } from "./db.js";
@@ -23,6 +24,8 @@ export type {
   ParsedDependency,
   ManifestFile,
   Severity,
+  VulnerabilitySourceStatus,
+  VulnerabilitySourceState,
   UnifiedVulnerability,
   DependencyScanResult,
   ScanReport,
@@ -106,5 +109,6 @@ export type {
   RecommendationMetrics,
   ValidationMetrics,
   EvalMetrics,
+  EvaluationLabels,
   AnalysisResult,
 } from "./types.js";

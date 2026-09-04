@@ -44,6 +44,10 @@ Start from `.env.example`. Never commit `.env` or `packages/core/.env`; replace 
 
 The application uses evidence-based heuristic fallbacks if an AI provider is unavailable. An HTTP 429 from a provider does not invalidate a scan; restart after changing keys or model settings.
 
+Groq free/on-demand organizations commonly enforce a 1,000 output-token-per-minute limit. `GROQ_MAX_OUTPUT_TOKENS` is intentionally lower than that limit; multiple remediation requests can still exhaust the account window, in which case Gemini is attempted and the report records the provider fallback.
+
+Scans report `dataQuality`, unresolved dependency counts, warnings, and per-source status. A `partial` scan must not be interpreted as a clean result. GitHub Advisory matching requires `GITHUB_TOKEN`; NVD is used for CVE enrichment because keyword-only NVD results are not safe to treat as package-specific findings.
+
 ## Running the app
 
 `pnpm dev` starts PostgreSQL (via Docker Compose), the API, and the dashboard. To run them separately:
@@ -56,6 +60,24 @@ pnpm --filter @vuln-shield/web dev
 Submit a public GitHub repository URL or `owner/repository` in the dashboard. Use a quick scan for dependency findings or full analysis for repository profiling, retrieval, graph construction, remediation ranking, and RSIS scoring.
 
 Full analysis is synchronous and may take several minutes for a large repository or slow external provider. Dashboard progress is estimated; the API does not yet stream pipeline status.
+
+Evaluation uses weak-proxy labels by default. For publishable measurements, send labelled ground truth to `POST /api/evaluate`:
+
+```json
+{
+  "scanId": "scan-id",
+  "labels": {
+    "recommendations": [
+      { "cveId": "CVE-2021-23337", "packageName": "lodash", "expectedAction": "upgrade", "expectedVersion": "4.17.21" }
+    ],
+    "retrieval": [
+      { "cveId": "CVE-2021-23337", "packageName": "lodash", "relevantChunkIds": ["chunk-id"] }
+    ]
+  }
+}
+```
+
+The response and persisted evaluation identify the mode as `labelled` or `weak-proxy`. Weak-proxy metrics are diagnostic only and are not ground-truth accuracy.
 
 ## API and CLI
 

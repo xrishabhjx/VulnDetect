@@ -2,6 +2,7 @@ import type {
   EvalMetrics,
   RemediationReport,
   DependencyScanResult,
+  EvaluationLabels,
 } from "../types.js";
 import { getDB } from "../db.js";
 import { computeEvalMetrics } from "./metrics.js";
@@ -39,7 +40,8 @@ export class Evaluator {
   async evaluate(
     scanId: string,
     scanResults: DependencyScanResult[],
-    remediations: RemediationReport[]
+    remediations: RemediationReport[],
+    labels?: EvaluationLabels
   ): Promise<EvalMetrics> {
     const db = getDB();
 
@@ -63,14 +65,23 @@ export class Evaluator {
     const relevanceMaps: Array<Map<string, number>> = [];
 
     for (const vuln of allVulns.slice(0, 20)) { // cap at 20 queries
-      // Weak relevance label: chunks that mention the package or CVE
+      const labelledRetrieval = labels?.retrieval?.find((label) =>
+        label.cveId === vuln.cveId && label.packageName === vuln.packageName
+      );
       const relevantChunkIds = new Set<string>();
       const relevanceMap = new Map<string, number>();
 
-      const queryTerms = [
-        vuln.packageName.toLowerCase(),
-        vuln.cveId?.toLowerCase() ?? "",
-      ].filter((t) => t.length > 0);
+      if (labelledRetrieval) {
+        for (const chunkId of labelledRetrieval.relevantChunkIds) {
+          relevantChunkIds.add(chunkId);
+          relevanceMap.set(chunkId, 1);
+        }
+      }
+
+      const queryTerms = labelledRetrieval ? [] : [
+          vuln.packageName.toLowerCase(),
+          vuln.cveId?.toLowerCase() ?? "",
+        ].filter((t) => t.length > 0);
 
       for (const chunk of chunks) {
         const text = chunk.content.toLowerCase();
@@ -102,7 +113,10 @@ export class Evaluator {
     // ── Build recommendation evaluation data ──────────────────────────────────
     const candidateLists = remediations.map((r) => r.candidates);
     const groundTruth = remediations.map((r) => {
-      // Inferred ground truth: upgrade if fixedVersions available, else mitigate
+      const labelled = labels?.recommendations?.find((label) =>
+        label.cveId === r.cveId && label.packageName === r.packageName
+      );
+      if (labelled) return labelled.expectedAction;
       const report = scanResults.flatMap((s) => s.vulnerabilities).find(
         (v) => v.cveId === r.cveId
       );
@@ -147,7 +161,10 @@ export class Evaluator {
         top3Accuracy: metrics.recommendation.top3Accuracy,
         buildSuccessRate: metrics.validation.buildSuccessRate,
         vulnReductionRate: metrics.validation.vulnReductionRate,
-        notes: `Self-supervised evaluation using ${retrievedLists.length} queries against ${chunks.length} chunks`,
+        evaluationMode: labels ? "labelled" : "weak-proxy",
+        notes: labels
+          ? `Labelled evaluation using ${retrievedLists.length} queries against ${chunks.length} chunks`
+          : `Weak-proxy evaluation using ${retrievedLists.length} queries against ${chunks.length} chunks; not suitable as ground-truth accuracy`,
       },
     });
 

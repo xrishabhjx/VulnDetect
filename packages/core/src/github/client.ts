@@ -118,11 +118,12 @@ export class GitHubClient {
   private detectEcosystem(filename: string): Ecosystem {
     const basename = filename.split("/").pop() || filename;
 
-    if (basename === "package.json") return "npm";
+    if (basename === "package.json" || basename === "package-lock.json" || basename === "pnpm-lock.yaml" || basename === "yarn.lock") return "npm";
     if (basename === "pom.xml") return "maven";
     if (
       basename.startsWith("requirements") ||
       basename === "Pipfile"
+      || basename === "Pipfile.lock"
     ) {
       return "pypi";
     }
