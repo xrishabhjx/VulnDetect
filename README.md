@@ -1,6 +1,6 @@
-# VulnShield
+# VulnDetect
 
-VulnShield scans public GitHub repositories for dependency vulnerabilities and can run a fuller repository-security analysis with a knowledge graph, remediation candidates, and an RSIS score. It is a TypeScript pnpm workspace with a Next.js dashboard, Express API, PostgreSQL/pgvector database, and a CLI.
+VulnDetect scans public GitHub repositories for dependency vulnerabilities and can run a fuller repository-security analysis with a knowledge graph, remediation candidates, and an RSIS score. It is a TypeScript pnpm workspace with a Next.js dashboard, Express API, PostgreSQL/pgvector database, and a CLI.
 
 ## Quick start
 
