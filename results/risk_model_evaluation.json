@@ -1,0 +1,1009 @@
+{
+  "target": "in_kev",
+  "target_interpretation": "KEV membership; non-membership is not confirmed non-exploitation.",
+  "test_size": 0.2,
+  "random_seed": 42,
+  "test_rows": 120,
+  "positive_rate": 0.5,
+  "model_metrics": {
+    "precision": 0.9298245614035088,
+    "recall": 0.8833333333333333,
+    "f1": 0.905982905982906,
+    "roc_auc": 0.948611111111111,
+    "pr_auc": 0.9486413183403881,
+    "confusion_matrix": [
+      [
+        56,
+        4
+      ],
+      [
+        7,
+        53
+      ]
+    ],
+    "test_rows": 120,
+    "positive_rate": 0.5
+  },
+  "models": {
+    "with_epss": {
+      "metrics": {
+        "precision": 0.9298245614035088,
+        "recall": 0.8833333333333333,
+        "f1": 0.905982905982906,
+        "roc_auc": 0.948611111111111,
+        "pr_auc": 0.9486413183403881,
+        "confusion_matrix": [
+          [
+            56,
+            4
+          ],
+          [
+            7,
+            53
+          ]
+        ],
+        "test_rows": 120,
+        "positive_rate": 0.5
+      },
+      "best_params": {
+        "classifier__learning_rate": 0.05,
+        "classifier__max_depth": 2,
+        "classifier__n_estimators": 200
+      },
+      "cv_average_precision": 0.970750360344277,
+      "model_path": "models/artifacts/risk_model.joblib",
+      "importance": [
+        [
+          "numeric__cvss_epss_interaction",
+          0.5183781385421753
+        ],
+        [
+          "numeric__epss_score",
+          0.1374334841966629
+        ],
+        [
+          "numeric__missingindicator_cvss_v3_score",
+          0.127959743142128
+        ],
+        [
+          "numeric__days_since_published",
+          0.05880320444703102
+        ],
+        [
+          "numeric__description_length",
+          0.04589473456144333
+        ],
+        [
+          "numeric__cvss_v3_score",
+          0.03264068067073822
+        ],
+        [
+          "cwe__cwe_id_CWE-416",
+          0.030687151476740837
+        ],
+        [
+          "cwe__cwe_id_Unknown",
+          0.02783016860485077
+        ],
+        [
+          "cwe__cwe_id_CWE-78",
+          0.020372703671455383
+        ],
+        [
+          "numeric__missingindicator_epss_score",
+          0.0
+        ],
+        [
+          "numeric__missingindicator_cvss_epss_interaction",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-113",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-114",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1188",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-119",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-120",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-121",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-122",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1220",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-125",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1284",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-130",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1321",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1329",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-134",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1390",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-189",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-19",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-190",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-191",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-20",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-200",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-209",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-22",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-248",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-25",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-264",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-266",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-267",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-268",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-269",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-276",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-280",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-281",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-284",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-285",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-287",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-288",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-290",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-295",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-305",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-306",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-310",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-312",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-326",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-345",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-347",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-352",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-354",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-36",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-362",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-367",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-384",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-388",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-399",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-400",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-401",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-404",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-425",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-434",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-472",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-476",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-480",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-494",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-502",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-522",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-538",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-59",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-601",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-611",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-648",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-653",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-707",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-710",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-732",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-755",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-77",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-772",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-782",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-787",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-79",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-798",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-835",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-843",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-862",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-863",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-89",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-912",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-913",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-918",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-923",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-94",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-96",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-98",
+          0.0
+        ]
+      ]
+    },
+    "without_epss": {
+      "metrics": {
+        "precision": 0.8135593220338984,
+        "recall": 0.8,
+        "f1": 0.8067226890756303,
+        "roc_auc": 0.8716666666666667,
+        "pr_auc": 0.8506147023419215,
+        "confusion_matrix": [
+          [
+            49,
+            11
+          ],
+          [
+            12,
+            48
+          ]
+        ],
+        "test_rows": 120,
+        "positive_rate": 0.5
+      },
+      "best_params": {
+        "classifier__learning_rate": 0.05,
+        "classifier__max_depth": 3,
+        "classifier__n_estimators": 100
+      },
+      "cv_average_precision": 0.8172672425310319,
+      "model_path": "models/artifacts/risk_model_no_epss.joblib",
+      "importance": [
+        [
+          "numeric__cvss_v3_score",
+          0.22551220655441284
+        ],
+        [
+          "numeric__missingindicator_cvss_v3_score",
+          0.17073145508766174
+        ],
+        [
+          "cwe__cwe_id_CWE-78",
+          0.07666046917438507
+        ],
+        [
+          "cwe__cwe_id_CWE-22",
+          0.07623372972011566
+        ],
+        [
+          "cwe__cwe_id_CWE-89",
+          0.06799548119306564
+        ],
+        [
+          "numeric__days_since_published",
+          0.06683987379074097
+        ],
+        [
+          "cwe__cwe_id_Unknown",
+          0.055076342076063156
+        ],
+        [
+          "numeric__description_length",
+          0.052260491997003555
+        ],
+        [
+          "cwe__cwe_id_CWE-352",
+          0.043182700872421265
+        ],
+        [
+          "cwe__cwe_id_CWE-306",
+          0.03892448544502258
+        ],
+        [
+          "cwe__cwe_id_CWE-77",
+          0.03512674570083618
+        ],
+        [
+          "cwe__cwe_id_CWE-862",
+          0.03359825536608696
+        ],
+        [
+          "cwe__cwe_id_CWE-502",
+          0.030922316014766693
+        ],
+        [
+          "cwe__cwe_id_CWE-190",
+          0.026935474947094917
+        ],
+        [
+          "cwe__cwe_id_CWE-113",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-114",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1188",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-119",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-120",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-121",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-122",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1220",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-125",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1284",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-130",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1321",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1329",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-134",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-1390",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-189",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-19",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-191",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-20",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-200",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-209",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-248",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-25",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-264",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-266",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-267",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-268",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-269",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-276",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-280",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-281",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-284",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-285",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-287",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-288",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-290",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-295",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-305",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-310",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-312",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-326",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-345",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-347",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-354",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-36",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-362",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-367",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-384",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-388",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-399",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-400",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-401",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-404",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-416",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-425",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-434",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-472",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-476",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-480",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-494",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-522",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-538",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-59",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-601",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-611",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-648",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-653",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-707",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-710",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-732",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-755",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-772",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-782",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-787",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-79",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-798",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-835",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-843",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-863",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-912",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-913",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-918",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-923",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-94",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-96",
+          0.0
+        ],
+        [
+          "cwe__cwe_id_CWE-98",
+          0.0
+        ]
+      ]
+    }
+  },
+  "same_test_baselines": {
+    "cvss_only": {
+      "precision": 0.7391304347826086,
+      "recall": 0.85,
+      "f1": 0.7906976744186046,
+      "roc_auc": 0.8395833333333333,
+      "pr_auc": 0.8005046017430759,
+      "confusion_matrix": [
+        [
+          42,
+          18
+        ],
+        [
+          9,
+          51
+        ]
+      ]
+    },
+    "epss_only": {
+      "precision": 0.9696969696969697,
+      "recall": 0.5333333333333333,
+      "f1": 0.6881720430107527,
+      "roc_auc": 0.92,
+      "pr_auc": 0.9204176299468608,
+      "confusion_matrix": [
+        [
+          59,
+          1
+        ],
+        [
+          28,
+          32
+        ]
+      ]
+    },
+    "random_base_rate_matched": {
+      "precision": 0.5333333333333333,
+      "recall": 0.5333333333333333,
+      "f1": 0.5333333333333333,
+      "roc_auc": 0.5213888888888889,
+      "pr_auc": 0.5324488976103778,
+      "confusion_matrix": [
+        [
+          32,
+          28
+        ],
+        [
+          28,
+          32
+        ]
+      ]
+    }
+  },
+  "comparison_table": [
+    {
+      "model": "with_epss",
+      "precision": 0.9298245614035088,
+      "recall": 0.8833333333333333,
+      "f1": 0.905982905982906,
+      "roc_auc": 0.948611111111111,
+      "pr_auc": 0.9486413183403881
+    },
+    {
+      "model": "without_epss",
+      "precision": 0.8135593220338984,
+      "recall": 0.8,
+      "f1": 0.8067226890756303,
+      "roc_auc": 0.8716666666666667,
+      "pr_auc": 0.8506147023419215
+    },
+    {
+      "model": "cvss_only",
+      "precision": 0.7391304347826086,
+      "recall": 0.85,
+      "f1": 0.7906976744186046,
+      "roc_auc": 0.8395833333333333,
+      "pr_auc": 0.8005046017430759
+    },
+    {
+      "model": "epss_only",
+      "precision": 0.9696969696969697,
+      "recall": 0.5333333333333333,
+      "f1": 0.6881720430107527,
+      "roc_auc": 0.92,
+      "pr_auc": 0.9204176299468608
+    },
+    {
+      "model": "random_base_rate_matched",
+      "precision": 0.5333333333333333,
+      "recall": 0.5333333333333333,
+      "f1": 0.5333333333333333,
+      "roc_auc": 0.5213888888888889,
+      "pr_auc": 0.5324488976103778
+    }
+  ],
+  "label_type_counts": {
+    "strong": 600
+  },
+  "supplementary_weak_proxy": {
+    "status": "separate from primary metrics",
+    "dataset": "data/processed/weak_proxy_sample.parquet",
+    "note": "EPSS-threshold constructed labels are exploratory only and not used here."
+  },
+  "caveat": "Metrics predict KEV catalog membership only; they do not establish calibrated or complete real-world exploitation prediction."
+}

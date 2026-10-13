@@ -1,0 +1,17 @@
+.git
+.venv
+venv
+__pycache__
+**/__pycache__
+*.py[cod]
+data
+results
+models/artifacts
+models/injection_classifier/artifacts
+frontend/node_modules
+frontend/dist
+node_modules
+*.joblib
+*.npy
+*.parquet
+*.csv

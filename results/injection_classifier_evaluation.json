@@ -1,0 +1,52 @@
+{
+  "test_rows": 106,
+  "class_counts": {
+    "0": 63,
+    "1": 43
+  },
+  "label_mapping": {
+    "0": "benign",
+    "1": "injection"
+  },
+  "trained_classifier": {
+    "precision": 0.9743589743589743,
+    "recall": 0.8837209302325582,
+    "f1": 0.926829268292683,
+    "roc_auc": 0.9966777408637874,
+    "pr_auc": 0.9952306087050471,
+    "confusion_matrix": [
+      [
+        62,
+        1
+      ],
+      [
+        5,
+        38
+      ]
+    ]
+  },
+  "regex_baseline": {
+    "precision": 1.0,
+    "recall": 0.023255813953488372,
+    "f1": 0.045454545454545456,
+    "roc_auc": 0.5116279069767442,
+    "pr_auc": 0.419482229047828,
+    "confusion_matrix": [
+      [
+        63,
+        0
+      ],
+      [
+        42,
+        1
+      ]
+    ]
+  },
+  "regex_patterns": [
+    "\\bignore\\s+(?:all\\s+)?(?:the\\s+)?(?:previous|prior|above|earlier)\\s+instructions?\\b",
+    "\\bdisregard\\b",
+    "\\bsystem\\s+prompt\\b",
+    "\\b(?:reveal|show|print|quote|disclose)\\b.{0,50}\\b(?:hidden|system|developer)\\s+(?:prompt|instructions?|message)\\b",
+    "\\b(?:override|forget)\\b.{0,50}\\b(?:instructions?|rules|policy|directions)\\b"
+  ]
+}

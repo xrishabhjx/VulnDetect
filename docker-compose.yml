@@ -1,28 +1,37 @@
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: vulnshield-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: vulnshield
-      POSTGRES_PASSWORD: vulnshield123
-      POSTGRES_DB: vulnshield
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     ports:
-      - "5433:5432"
+      - "8000:8000"
+    environment:
+      CUDA_VISIBLE_DEVICES: ""
+      PYTHONUNBUFFERED: "1"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    command: >
-      postgres
-      -c hba_file=/etc/postgresql/pg_hba.conf
-    configs:
-      - source: pg_hba
-        target: /etc/postgresql/pg_hba.conf
+      - ./data:/app/data:ro
+      - ./models/artifacts:/app/models/artifacts:ro
+      - ./models/injection_classifier/artifacts:/app/models/injection_classifier/artifacts:ro
+      - ./results:/app/results:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; r=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)); assert r.get('status') == 'ok' and r.get('cve_cache_ready') is True"
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-configs:
-  pg_hba:
-    content: |
-      local   all   all   trust
-      host    all   all   0.0.0.0/0   md5
-
-volumes:
-  pgdata:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy

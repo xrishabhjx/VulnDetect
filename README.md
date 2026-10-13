@@ -1,137 +1,93 @@
 # VulnDetect
 
-VulnDetect scans public GitHub repositories for dependency vulnerabilities and can run a fuller repository-security analysis with a knowledge graph, remediation candidates, and an RSIS score. It is a TypeScript pnpm workspace with a Next.js dashboard, Express API, PostgreSQL/pgvector database, and a CLI.
+`VulnDetect` is an AI-assisted vulnerability risk-scoring and prompt-injection detection platform. It combines public vulnerability intelligence (NVD, CISA KEV, and EPSS) with locally run, transparent scoring and detection models.
 
-## Quick start
-
-Prerequisites: Node.js 20 or newer (Node 22 recommended), pnpm, and Docker Desktop.
-
-```powershell
-git clone <repository-url>
-cd VulnDetect
-corepack enable
-pnpm install
-
-Copy-Item .env.example .env
-# Prisma loads its environment from this package when its CLI is run.
-Copy-Item .env packages\core\.env
-
-docker compose up -d
-pnpm --filter @vuln-shield/core db:push
-pnpm dev
-```
-
-Open the dashboard at http://localhost:3000. The API runs at http://localhost:3005; check it with http://localhost:3005/api/health.
-
-On macOS or Linux, use `cp .env.example .env` and `cp .env packages/core/.env` in place of the `Copy-Item` commands.
-
-## Configuration
-
-Start from `.env.example`. Never commit `.env` or `packages/core/.env`; replace any keys that were previously shared or exposed.
-
-| Variable | Purpose | Required |
-| --- | --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string; defaults match `docker-compose.yml`. | Yes |
-| `GITHUB_TOKEN` | Raises GitHub API limits and is recommended for repository analysis. | Recommended |
-| `NVD_API_KEY` | Enables richer NVD enrichment and higher NVD API limits. | Optional |
-| `GROQ_API_KEY` | Primary LLM provider for remediation reasoning. | Optional |
-| `GEMINI_API_KEY` | Fallback LLM provider and optional embeddings provider. | Optional |
-| `GROQ_MODEL` | Groq reasoning model. | Optional |
-| `GEMINI_MODEL` | Gemini reasoning model; default: `gemini-flash-latest`. | Optional |
-| `GEMINI_EMBED_MODEL` | Gemini embeddings model. | Optional |
-| `PORT` | API port; default: `3005`. | Optional |
-| `WEB_ORIGIN` | Comma-separated dashboard origins allowed by API CORS. | Optional |
-
-The application uses evidence-based heuristic fallbacks if an AI provider is unavailable. An HTTP 429 from a provider does not invalidate a scan; restart after changing keys or model settings.
-
-Groq free/on-demand organizations commonly enforce a 1,000 output-token-per-minute limit. `GROQ_MAX_OUTPUT_TOKENS` is intentionally lower than that limit; multiple remediation requests can still exhaust the account window, in which case Gemini is attempted and the report records the provider fallback.
-
-Scans report `dataQuality`, unresolved dependency counts, warnings, and per-source status. A `partial` scan must not be interpreted as a clean result. GitHub Advisory matching requires `GITHUB_TOKEN`; NVD is used for CVE enrichment because keyword-only NVD results are not safe to treat as package-specific findings.
-
-## Running the app
-
-`pnpm dev` starts PostgreSQL (via Docker Compose), the API, and the dashboard. To run them separately:
-
-```powershell
-pnpm --filter @vuln-shield/api dev
-pnpm --filter @vuln-shield/web dev
-```
-
-Submit a public GitHub repository URL or `owner/repository` in the dashboard. Use a quick scan for dependency findings or full analysis for repository profiling, retrieval, graph construction, remediation ranking, and RSIS scoring.
-
-Full analysis is synchronous and may take several minutes for a large repository or slow external provider. Dashboard progress is estimated; the API does not yet stream pipeline status.
-
-Evaluation uses weak-proxy labels by default. For publishable measurements, send labelled ground truth to `POST /api/evaluate`:
-
-```json
-{
-  "scanId": "scan-id",
-  "labels": {
-    "recommendations": [
-      { "cveId": "CVE-2021-23337", "packageName": "lodash", "expectedAction": "upgrade", "expectedVersion": "4.17.21" }
-    ],
-    "retrieval": [
-      { "cveId": "CVE-2021-23337", "packageName": "lodash", "relevantChunkIds": ["chunk-id"] }
-    ]
-  }
-}
-```
-
-The response and persisted evaluation identify the mode as `labelled` or `weak-proxy`. Weak-proxy metrics are diagnostic only and are not ground-truth accuracy.
-
-## API and CLI
-
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/health` | Health check |
-| `POST` | `/api/scan` | Dependency vulnerability scan |
-| `POST` | `/api/analyze` | Full repository-security analysis |
-| `GET` | `/api/scans` | Recent scan records |
-| `GET` | `/api/scan/:scanId` | Scan and its findings |
-| `GET` | `/api/analysis/:scanId` | Saved full-analysis output |
-| `GET` | `/api/rsis/:scanId` | RSIS score |
-| `GET` | `/api/similar/:scanId` | Similar-repository evidence |
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://localhost:3005/api/scan `
-  -ContentType 'application/json' `
-  -Body '{"repoUrl":"OWASP/NodeGoat"}'
-```
-
-Start the interactive CLI with:
-
-```powershell
-pnpm --filter @vuln-shield/core scan
-```
-
-## Development checks
-
-```powershell
-pnpm --filter @vuln-shield/core test
-pnpm --filter @vuln-shield/core build
-pnpm --filter @vuln-shield/api build
-pnpm --filter @vuln-shield/web build
-```
-
-Some integration tests call external vulnerability services, so they need network access and can be affected by provider rate limits. Unit and type checks do not require API keys.
-
-## Troubleshooting
-
-| Symptom | Resolution |
-| --- | --- |
-| Prisma reports `DATABASE_URL` is missing | Ensure root `.env` exists, then copy it to `packages/core/.env` before running `db:push`. |
-| API cannot connect to PostgreSQL | Run `docker compose up -d`, confirm the container is healthy, and check `DATABASE_URL`. |
-| Dashboard cannot reach API | Confirm the API is on port `3005` and `packages/web/.env.local` uses `NEXT_PUBLIC_API_URL=http://localhost:3005`; restart Next.js afterward. |
-| Gemini reports an unavailable model | Set `GEMINI_MODEL=gemini-flash-latest`, then restart the API. Availability varies by account and region. |
-| Groq or Gemini returns 429 | Wait for quota reset or configure another provider; heuristic remediation remains available. |
+Core risk scoring is designed to work without paid LLM APIs. Machine-learning and rule-based components can support analysis, while any future optional language-model integrations remain outside the core scoring path.
 
 ## Project layout
 
-```text
-packages/core  Scanner, analyzer, Prisma schema, CLI, intelligence pipeline
-packages/api   Express REST API
-packages/web   Next.js dashboard
-scripts        Local development launcher
+- `ingestion/` — NVD, CISA KEV, and EPSS ingestion, dataset building, and GitHub manifest parsing
+- `models/` — risk-model training, prompt-injection classification, embeddings, and OSV lookup
+- `api/` — FastAPI assessment API, repository scanner, and risk engine
+- `frontend/` — React + TypeScript dashboard using Vite
+- `demo_app.py` — Streamlit demonstration app for repository scans, CVE assessment, and model evaluation
+- `data/` — local data storage; contents are ignored by Git except `.gitkeep`
+- `notebooks/` — exploratory analysis
+- `tests/` — automated tests
+
+## Dependencies
+
+The Python dependencies are listed in `requirements.txt`. I chose this straightforward format over Poetry because this initial project is a small scaffold with no package or publishing configuration; a plain requirements file is easy to install and extend. The frontend uses npm and its dependencies are declared in `frontend/package.json`.
+
+## Getting started
+
+Create and activate a Python virtual environment, then install the Python dependencies:
+
+```bash
+python -m venv .venv
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-For dashboard-specific notes, see [packages/web/README.md](packages/web/README.md). The visual design reference is [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
+Install the frontend dependencies when you are ready to work on the UI:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Run the interactive demo locally
+
+First prepare the datasets and model artifacts using the commands in the Docker demo section below. Start the API from the project root in one terminal:
+
+```bash
+uvicorn api.main:app --reload
+```
+
+In a second terminal, activate the same virtual environment and start the Streamlit interface:
+
+```bash
+streamlit run demo_app.py
+```
+
+The demo defaults to the API at `http://127.0.0.1:8000`. Set `VULNDETECT_API_URL` if the API is hosted elsewhere. Repository scans require network access to GitHub and OSV.dev.
+
+## Full-stack local demo with Docker Compose
+
+Docker images contain application code and runtime dependencies only. Datasets, evaluation reports, and trained model artifacts stay on the host and are mounted read-only into the API container.
+
+### 1. Prepare data and models on the host
+
+Run these commands from the project root (the directory containing this README) in an activated Python environment with `requirements.txt` installed. The feed downloads and pretrained-model downloads require network access the first time.
+
+```bash
+python ingestion/fetch_nvd.py
+python ingestion/fetch_kev.py
+python ingestion/fetch_epss.py
+python ingestion/build_dataset.py
+python models/build_labels.py
+python models/baseline_models.py
+python models/train_risk_model.py
+python models/injection_classifier/prepare_data.py
+python models/injection_classifier/train_classifier.py
+python models/injection_classifier/evaluate_classifier.py
+python models/embeddings/build_index.py
+```
+
+The risk label builder writes a primary `data/processed/labeled_sample.parquet` balanced for KEV catalog membership and a distinct supplementary `data/processed/weak_proxy_sample.parquet` based on EPSS thresholds. Only the KEV-membership cohort is used for primary metrics. A CVE absent from KEV is not thereby confirmed unexploited. The risk trainer creates matched XGBoost variants at `models/artifacts/risk_model.joblib` (with EPSS) and `models/artifacts/risk_model_no_epss.joblib` (without EPSS and its interaction), evaluated on the same holdout. The supplementary labels are exploratory and their EPSS baseline is circular by construction. Injection splits, injection artifacts, embeddings, and evaluation outputs are also saved under `data/processed/`, `models/`, and `results/`.
+
+The primary target and model comparison are KEV catalog membership; a non-listed CVE must not be interpreted as confirmed unexploited. The trained models share the same 80/20 stratified holdout: one uses EPSS and one excludes EPSS and its CVSS interaction. `baseline_models.py` also writes an isolated supplementary set of metrics for the weak-proxy cohort when it exists; those figures are exploratory and are never combined into the primary results. The API healthcheck waits until the dataset and risk model can initialize the startup CVE cache; the frontend starts after the API is healthy.
+
+### 2. Build and start the stack
+
+From the same project root:
+
+```bash
+docker-compose up --build
+```
+
+Open the frontend at [http://localhost:5173](http://localhost:5173). The API is available at [http://localhost:8000](http://localhost:8000), with interactive docs at [http://localhost:8000/docs](http://localhost:8000/docs). Stop the stack with `Ctrl+C`, or run `docker-compose down` in another terminal.
+
+The Compose mounts are read-only and keep local datasets and model weights out of the images. If an artifact is regenerated, restart the API container to load the updated files and rebuild its cached CVE scores.
